@@ -1,832 +1,957 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>ParkGaai — Hong Kong Smart Parking</title>
-    <meta name="description" content="Real-time Hong Kong smart parking meter finder. Find vacant spots, get push alerts, navigate instantly. Free & no login." />
-    <meta name="theme-color" content="#ffffff" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="ParkGaai" />
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
-    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <style>
-        #map { height: 100%; width: 100%; }
-        .leaflet-popup-content { max-height: 420px; overflow-y: auto; width: 280px !important; }
-        .custom-cluster-marker { transition: all 0.3s ease-in-out; }
+    <meta name="description" content="Real-time HK smart parking meter finder. Find vacant spots near you instantly.">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="ParkGaai">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
 
-        /* Loading overlay */
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { height: 100%; margin: 0; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+        /* ── MAP fills full screen ──────────────────── */
+        #map { position: fixed; inset: 0; z-index: 0; }
+        .leaflet-control-zoom { display: none !important; }
+        .leaflet-popup-content { max-height: 440px; overflow-y: auto; width: 288px !important; margin: 0 !important; }
+        .leaflet-popup-content-wrapper { border-radius: 16px !important; padding: 0 !important; overflow: hidden; box-shadow: 0 8px 30px rgba(0,0,0,0.15) !important; }
+
+        /* ── TOP SEARCH BAR ─────────────────────────── */
+        #topBar {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 400;
+            padding: max(14px, env(safe-area-inset-top)) 12px 10px;
+        }
+
+        /* ── BOTTOM SHEET PANEL ─────────────────────── */
+        #panel {
+            position: fixed; left: 0; right: 0; bottom: 68px;
+            background: white;
+            border-radius: 22px 22px 0 0;
+            box-shadow: 0 -4px 24px rgba(0,0,0,0.13);
+            max-height: 68vh; overflow-y: auto;
+            transform: translateY(110%);
+            transition: transform 0.34s cubic-bezier(0.32,0.72,0,1);
+            z-index: 410;
+        }
+        #panel.open { transform: translateY(0); }
+
+        /* ── BOTTOM NAV ─────────────────────────────── */
+        #bottomNav {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            height: 68px; background: white;
+            border-top: 1px solid #f1f5f9;
+            box-shadow: 0 -2px 12px rgba(0,0,0,0.06);
+            z-index: 420;
+            padding-bottom: env(safe-area-inset-bottom);
+            display: flex; align-items: stretch;
+        }
+        .nav-btn {
+            flex: 1; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 3px; border: none; background: none;
+            cursor: pointer; color: #94a3b8;
+            transition: color 0.15s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .nav-btn.active { color: #10b981; }
+        .nav-btn span.icon { font-size: 22px; line-height: 1; }
+        .nav-btn span.label { font-size: 10px; font-weight: 700; letter-spacing: 0.02em; }
+
+        /* ── ZOOM + LOCATE FABs ─────────────────────── */
+        #mapFabs {
+            position: fixed; right: 12px; bottom: 86px;
+            z-index: 405; display: flex; flex-direction: column; gap: 8px;
+        }
+        .fab {
+            width: 44px; height: 44px; border-radius: 14px;
+            background: white; border: none; cursor: pointer;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.14);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; font-weight: 700; color: #334155;
+            transition: box-shadow 0.15s;
+        }
+        .fab:active { box-shadow: 0 1px 6px rgba(0,0,0,0.10); }
+
+        /* ── SETTINGS MODAL ─────────────────────────── */
+        #settingsModal {
+            position: fixed; inset: 0; z-index: 500;
+            background: rgba(0,0,0,0.45);
+            display: none; align-items: flex-end;
+        }
+        #settingsModal.open { display: flex; }
+        #settingsSheet {
+            width: 100%; background: white;
+            border-radius: 22px 22px 0 0;
+            max-height: 82vh; overflow-y: auto;
+            padding-bottom: max(20px, env(safe-area-inset-bottom));
+        }
+
+        /* ── LOADING OVERLAY ────────────────────────── */
         #loadingOverlay {
             position: fixed; inset: 0; z-index: 9999;
-            background: rgba(255,255,255,0.95);
+            background: white;
             display: flex; flex-direction: column;
             align-items: center; justify-content: center; gap: 14px;
             transition: opacity 0.4s ease;
         }
-        #loadingOverlay.hidden { opacity: 0; pointer-events: none; }
+        #loadingOverlay.fade { opacity: 0; pointer-events: none; }
         .spinner {
-            width: 44px; height: 44px; border-radius: 50%;
-            border: 4px solid #e2e8f0;
-            border-top-color: #10b981;
-            animation: spin 0.8s linear infinite;
+            width: 46px; height: 46px; border-radius: 50%;
+            border: 4px solid #e2e8f0; border-top-color: #10b981;
+            animation: spin 0.85s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── CLUSTER ────────────────────────────────── */
+        .custom-cluster-marker { transition: transform 0.2s ease; }
     </style>
 </head>
-<body class="bg-gray-100 font-sans overflow-hidden h-screen w-screen flex flex-col">
+<body>
 
-    <!-- Loading overlay (shown while meter data downloads) -->
-    <div id="loadingOverlay">
-        <div class="spinner"></div>
-        <p class="text-sm font-bold text-slate-700">Loading ParkGaai…</p>
-        <p id="loadingMsg" class="text-xs text-gray-400">Connecting to data.gov.hk</p>
-    </div>
+<!-- ══════════ LOADING ══════════ -->
+<div id="loadingOverlay">
+    <div class="spinner"></div>
+    <p style="font:700 15px/1 system-ui;color:#1e293b">Loading ParkGaai…</p>
+    <p id="loadingMsg" style="font:12px/1 system-ui;color:#94a3b8">Connecting to data.gov.hk</p>
+</div>
 
-    <header class="bg-white border-b border-gray-200 h-16 px-6 flex justify-between items-center shadow-sm flex-shrink-0">
-        <div class="flex items-center gap-3">
-            <span class="text-2xl">🅿️</span>
-            <div>
-                <h1 class="text-lg font-extrabold tracking-tight text-slate-800 leading-none">
-                    Park<span class="text-emerald-600">Gaai</span>
-                </h1>
-                <p class="text-[10px] text-gray-400 leading-none mt-0.5">香港即時咪錶地圖</p>
-            </div>
-        </div>
-        <div class="flex items-center space-x-3">
-            <button id="notifyBtn" onclick="requestNotificationPermission()" class="bg-blue-600 hover:bg-blue-700 text-xs px-3 py-1.5 rounded shadow text-white transition font-medium">
-                🔔 Enable Alerts
+<!-- ══════════ MAP ══════════ -->
+<div id="map"></div>
+
+<!-- ══════════ TOP SEARCH BAR ══════════ -->
+<div id="topBar">
+    <div style="display:flex;gap:8px;align-items:center">
+        <div style="flex:1;background:white;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,0.13);display:flex;align-items:center;padding:0 12px;gap:8px;height:48px">
+            <span style="font-size:20px;flex-shrink:0">🅿️</span>
+            <input id="searchInput" type="text" placeholder="Search street or landmark…"
+                onkeypress="if(event.key==='Enter')searchLocation()"
+                style="flex:1;border:none;outline:none;font-size:14px;color:#1e293b;background:transparent;min-width:0">
+            <button onclick="searchLocation()"
+                style="background:#2563eb;color:white;border:none;border-radius:10px;padding:6px 14px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">
+                Go
             </button>
-            <span id="refreshStatus" class="text-xs text-gray-400">Initializing...</span>
         </div>
-    </header>
+        <button onclick="openSettings()"
+            style="width:48px;height:48px;border-radius:16px;background:white;border:none;cursor:pointer;box-shadow:0 2px 16px rgba(0,0,0,0.13);font-size:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ⚙️
+        </button>
+    </div>
+    <!-- Live sync status (tiny, under bar) -->
+    <div style="text-align:right;padding-right:60px;margin-top:4px">
+        <span id="refreshStatus" style="font-size:10px;color:#94a3b8;font-weight:600"></span>
+    </div>
+</div>
 
-    <div class="flex flex-col md:flex-row h-[calc(100vh-64px)] w-full overflow-hidden">
+<!-- ══════════ ZOOM + LOCATE FABs ══════════ -->
+<div id="mapFabs">
+    <button class="fab" onclick="map.zoomIn()">+</button>
+    <button class="fab" onclick="map.zoomOut()">−</button>
+    <button class="fab" onclick="triggerNearMe()" title="My location" style="font-size:18px">📍</button>
+</div>
 
-        <aside class="w-full md:w-96 bg-white shadow-lg flex flex-col h-2/5 md:h-full p-4 z-10 overflow-y-auto border-r border-gray-200 flex-shrink-0">
+<!-- ══════════ BOTTOM SHEET PANEL ══════════ -->
+<div id="panel">
+    <div style="display:flex;justify-content:center;padding:10px 0 6px;position:sticky;top:0;background:white;z-index:1">
+        <div style="width:38px;height:4px;background:#e2e8f0;border-radius:4px"></div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 16px 10px;position:sticky;top:26px;background:white;z-index:1;border-bottom:1px solid #f1f5f9">
+        <h2 id="panelTitle" style="font-size:16px;font-weight:800;color:#0f172a;margin:0"></h2>
+        <button onclick="closePanel()" style="border:none;background:none;color:#94a3b8;font-size:13px;font-weight:700;cursor:pointer;padding:4px 8px">✕</button>
+    </div>
+    <div id="panelContent"></div>
+</div>
 
-            <div class="mb-4 pb-4 border-b border-gray-200 flex-shrink-0">
-                <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <span>🚗</span> Vehicle Category Filter (車輛類別)
-                </h2>
-                <select id="vehicleTypeFilter" onchange="filterVehicleType()" class="border text-xs font-semibold px-2.5 py-2 rounded w-full bg-slate-50 border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="ALL">All Categories (顯示全部車輛)</option>
+<!-- ══════════ BOTTOM NAV ══════════ -->
+<div id="bottomNav">
+    <button class="nav-btn" id="navNearMe" onclick="triggerNearMe()">
+        <span class="icon">📡</span>
+        <span class="label">Near Me</span>
+    </button>
+    <button class="nav-btn" id="navSaved" onclick="openSavedPanel()">
+        <span class="icon">⭐</span>
+        <span class="label">Saved <span id="savedCount" style="display:none;background:#ef4444;color:white;border-radius:99px;padding:0 5px;font-size:9px;vertical-align:middle">0</span></span>
+    </button>
+    <button class="nav-btn" id="navReport" onclick="openReportPanel()">
+        <span class="icon">🚨</span>
+        <span class="label">Report</span>
+    </button>
+</div>
+
+<!-- ══════════ SETTINGS MODAL ══════════ -->
+<div id="settingsModal" onclick="if(event.target===this)closeSettings()">
+    <div id="settingsSheet">
+        <div style="display:flex;justify-content:center;padding:12px 0 6px">
+            <div style="width:38px;height:4px;background:#e2e8f0;border-radius:4px"></div>
+        </div>
+        <div style="padding:8px 20px 0">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+                <h2 style="font-size:20px;font-weight:800;color:#0f172a;margin:0">Settings 設定</h2>
+                <button onclick="closeSettings()" style="border:none;background:none;color:#94a3b8;font-size:14px;font-weight:700;cursor:pointer">✕</button>
+            </div>
+
+            <!-- LOCATION -->
+            <div style="margin-bottom:20px">
+                <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px">
+                    <span style="font-size:26px">📍</span>
+                    <div>
+                        <p style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 3px">Location Access 位置權限</p>
+                        <p style="font-size:12px;color:#64748b;margin:0">Required for "Near Me" GPS. Your location is never stored or shared.</p>
+                    </div>
+                </div>
+                <div id="locationStatusBox" style="background:#f8fafc;border-radius:12px;padding:10px 12px;font-size:12px;color:#64748b;margin-bottom:8px">Checking…</div>
+                <button onclick="requestLocationPerm()" id="locationBtn"
+                    style="width:100%;background:#2563eb;color:white;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">
+                    Enable Location Access
+                </button>
+            </div>
+
+            <div style="border-top:1px solid #f1f5f9;margin:16px 0"></div>
+
+            <!-- NOTIFICATIONS -->
+            <div style="margin-bottom:20px">
+                <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px">
+                    <span style="font-size:26px">🔔</span>
+                    <div>
+                        <p style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 3px">Push Notifications 推送通知</p>
+                        <p style="font-size:12px;color:#64748b;margin:0">Get alerted the moment a watched parking space becomes vacant.</p>
+                    </div>
+                </div>
+                <div id="notifStatusBox" style="background:#f8fafc;border-radius:12px;padding:10px 12px;font-size:12px;color:#64748b;margin-bottom:8px">Checking…</div>
+                <button onclick="requestNotifPerm()" id="notifBtn"
+                    style="width:100%;background:#10b981;color:white;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">
+                    Enable Notifications
+                </button>
+                <!-- iOS hint -->
+                <div id="iosHint" style="display:none;margin-top:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px;font-size:12px;color:#92400e">
+                    <p style="font-weight:700;margin:0 0 4px">📱 iPhone / iPad users:</p>
+                    <p style="margin:0">Notifications only work when ParkGaai is <b>added to your Home Screen</b>.<br>
+                    In Safari: tap <b>Share ⎙</b> → <b>"Add to Home Screen"</b> → reopen from the icon.</p>
+                </div>
+            </div>
+
+            <div style="border-top:1px solid #f1f5f9;margin:16px 0"></div>
+
+            <!-- VEHICLE FILTER -->
+            <div style="margin-bottom:20px">
+                <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px">
+                    <span style="font-size:26px">🚗</span>
+                    <div>
+                        <p style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 3px">Vehicle Type 車輛類別</p>
+                        <p style="font-size:12px;color:#64748b;margin:0">Show only meters for your vehicle.</p>
+                    </div>
+                </div>
+                <select id="vehicleTypeFilter" onchange="filterVehicleType()"
+                    style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:12px;font-size:14px;color:#0f172a;background:#f8fafc;-webkit-appearance:auto">
+                    <option value="ALL">All Categories (全部車輛)</option>
                 </select>
             </div>
 
-            <div class="mb-4 pb-4 border-b border-gray-200 flex-shrink-0">
-                <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <span>📍</span> Find Nearest Parking Streets
-                </h2>
-                <div class="flex gap-2">
-                    <input id="searchInput" type="text" placeholder="e.g. 厚福街 or Hung Hom"
-                           onkeypress="if(event.key === 'Enter') searchLocation()"
-                           class="border text-xs px-2.5 py-2 rounded flex-1 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    <button onclick="searchLocation()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 text-xs font-bold rounded shadow transition">
-                        Go
-                    </button>
-                </div>
-                <!-- Near Me GPS button -->
-                <button id="nearMeBtn" onclick="findNearMe()"
-                    class="mt-2 w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 rounded shadow transition flex items-center justify-center gap-1.5">
-                    📡 Near Me — 我附近 (GPS)
-                </button>
-                <div id="searchResultsContainer" class="mt-3 space-y-2 hidden"></div>
-            </div>
+            <div style="border-top:1px solid #f1f5f9;margin:16px 0"></div>
 
-            <div class="flex-1 flex flex-col min-h-0">
-                <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider border-b pb-2 flex justify-between items-center flex-shrink-0">
-                    <span class="flex items-center gap-1.5">⭐ Tracked Streets Watchlist</span>
-                    <span id="watchlistCount" class="text-xs bg-slate-200 text-slate-800 font-bold px-2 py-0.5 rounded-full">0</span>
-                </h2>
-                <div id="watchlistContainer" class="mt-3 space-y-3 flex-1 overflow-y-auto text-xs text-gray-400 italic">
-                    No spaces tracked. Click map pins or search a destination above.
-                </div>
+            <!-- ABOUT -->
+            <div style="text-align:center;padding:4px 0 8px">
+                <p style="font-weight:800;color:#0f172a;margin:0 0 4px">ParkGaai 🅿️ 香港即時咪錶地圖</p>
+                <p style="font-size:11px;color:#94a3b8;margin:0">Data from data.gov.hk · Refreshes every 60s</p>
+                <p style="font-size:11px;color:#94a3b8;margin:4px 0 0">Not affiliated with the Transport Department</p>
             </div>
-        </aside>
-
-        <main class="flex-1 h-3/5 md:h-full relative bg-gray-200">
-            <div id="map"></div>
-        </main>
+        </div>
     </div>
+</div>
 
-    <script>
-        // When deployed on Vercel, /api/spaces and /api/occupancy are rewritten
-        // server-side (see vercel.json) — no CORS issues.
-        // When running locally (file:// or localhost), fall back to corsproxy.io.
-        const _ON_VERCEL    = location.protocol !== 'file:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
-        const _GOV_SPACES    = "https://resource.data.one.gov.hk/td/psiparkingspaces/spaceinfo/parkingspaces.csv";
-        const _GOV_OCCUPANCY = "https://resource.data.one.gov.hk/td/psiparkingspaces/occupancystatus/occupancystatus.csv";
-        const SPACES_INFO_URL  = _ON_VERCEL ? "/api/spaces"    : "https://corsproxy.io/?url=" + encodeURIComponent(_GOV_SPACES);
-        const OCCUPANCY_URL    = _ON_VERCEL ? "/api/occupancy" : "https://corsproxy.io/?url=" + encodeURIComponent(_GOV_OCCUPANCY);
+<!-- ══════════ SCRIPTS ══════════ -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════
+const _ON_VERCEL     = location.protocol !== 'file:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
+const _GOV_SPACES    = 'https://resource.data.one.gov.hk/td/psiparkingspaces/spaceinfo/parkingspaces.csv';
+const _GOV_OCCUPANCY = 'https://resource.data.one.gov.hk/td/psiparkingspaces/occupancystatus/occupancystatus.csv';
+const SPACES_URL     = _ON_VERCEL ? '/api/spaces'    : 'https://corsproxy.io/?url=' + encodeURIComponent(_GOV_SPACES);
+const OCCUPANCY_URL  = _ON_VERCEL ? '/api/occupancy' : 'https://corsproxy.io/?url=' + encodeURIComponent(_GOV_OCCUPANCY);
+const CACHE_KEY      = 'parkgaai_static_v1';
+const CACHE_TTL      = 24 * 60 * 60 * 1000;
+localStorage.removeItem('hk_meters_static_cache_v7'); // clear old format
 
-        let map;
-        let parkingMeters = {};
-        let occupancyState = {};
-        let markerClusterGroup;
-        let searchMarker = null;
-        let cachedMarkersMap = {};
+// ═══════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════
+let map, markerClusterGroup, searchMarker, tileLayer;
+let parkingMeters  = {};
+let occupancyState = {};
+let cachedMarkersMap = {};
+let currentPanel   = null; // 'search' | 'saved' | 'report'
 
-        let watchlist     = JSON.parse(localStorage.getItem('hk_meter_watchlist') || '[]');
-        let userComments  = JSON.parse(localStorage.getItem('hk_meter_comments')  || '{}');
-        let brokenSensors = JSON.parse(localStorage.getItem('hk_meter_broken')    || '{}');
+let watchlist     = JSON.parse(localStorage.getItem('hk_meter_watchlist') || '[]');
+let userComments  = JSON.parse(localStorage.getItem('hk_meter_comments')  || '{}');
+let brokenSensors = JSON.parse(localStorage.getItem('hk_meter_broken')    || '{}');
 
-        const operatingPeriodMap = {
-            'A': '星期一至六 (公眾假期除外)：08:00 AM - 12:00 AM<br>Mon-Sat (Excl. PH): 08:00 AM - 12:00 AM',
-            'B': '星期一至六 (公眾假期除外)：08:00 AM - 08:00 PM<br>Mon-Sat (Excl. PH): 08:00 AM - 08:00 PM',
-            'D': '星期一至六 (公眾假期除外)：08:00 AM - 12:00 AM<br>星期日及公眾假期：10:00 AM - 10:00 PM<br>Mon-Sat (Excl. PH): 08:00 AM - 12:00 AM<br>Sun & PH: 10:00 AM - 10:00 PM',
-            'F': '每日 (包括公眾假期)：08:00 AM - 09:00 PM<br>Daily (Incl. PH): 08:00 AM - 09:00 PM',
-            'H': '每日 (包括公眾假期)：08:00 AM - 08:00 PM<br>Daily (Incl. PH): 08:00 AM - 08:00 PM',
-            'J': '每日 (包括公眾假期)：08:00 AM - 12:00 AM<br>Daily (Incl. PH): 08:00 AM - 12:00 AM',
-            'N': '每日 (包括公眾假期)：07:00 PM - 12:00 AM<br>Daily (Incl. PH): 07:00 PM - 12:00 AM',
-            'P': '星期一至六：08:00 AM - 08:00 PM (星期日除外)<br>Mon-Sat: 08:00 AM - 08:00 PM (No Sun Parking)',
-            'Q': '星期一至六 (公眾假期除外)：08:00 AM - 08:00 PM<br>星期日及公眾假期：10:00 AM - 10:00 PM<br>Mon-Sat (Excl. PH): 08:00 AM - 08:00 PM<br>Sun & PH: 10:00 AM - 10:00 PM',
-            'S': '星期一至五：05:00 PM - 12:00 AM / 星期六：08:00 AM - 12:00 AM / 星期日及公眾假期：10:00 AM - 10:00 PM<br>Mon-Fri: 05:00 PM - 12:00 AM / Sat: 08:00 AM - 12:00 AM / Sun & PH: 10:00 AM - 10:00 PM',
-            'T': '星期一至五：05:30 PM - 12:00 AM / 星期六：08:00 AM - 12:00 AM / 星期日及公眾假期：10:00 AM - 10:00 PM<br>Mon-Fri: 05:30 PM - 12:00 AM / Sat: 08:00 AM - 12:00 AM / Sun & PH: 10:00 AM - 10:00 PM'
-        };
+// ═══════════════════════════════════════════════
+// LOOKUP TABLES
+// ═══════════════════════════════════════════════
+const vehicleTypeMap  = { A:'Private Car / Van / Taxi (私家車/輕型貨車/的士)', G:'Goods Vehicle (貨車)', C:'Coach / Bus (巴士)', D:'Disabled Space (殘疾人士專用)' };
+const vehicleShortMap = { A:'🚗 Car', G:'🚚 Goods', C:'🚌 Bus', D:'♿ Disabled' };
+const getVehicleTypeName  = c => vehicleTypeMap[(c||'').toUpperCase().trim()]  || `${c} (Other)`;
+const getVehicleShortName = c => vehicleShortMap[(c||'').toUpperCase().trim()] || `🚘 ${c}`;
 
-        function getOperatingHours(code) {
-            if (!code) return 'Refer to local roadside signs. (請參閱路旁標誌)';
-            let cleanCode = code.toUpperCase().trim().replace(/^[0-9]/, '');
-            return operatingPeriodMap[cleanCode] || operatingPeriodMap[code.toUpperCase().trim()] || `Schedule Code ${code} (請參閱路旁標誌)`;
-        }
+const opHours = {
+    A:'Mon–Sat (Excl. PH): 08:00–00:00',
+    B:'Mon–Sat (Excl. PH): 08:00–20:00',
+    D:'Mon–Sat: 08:00–00:00 / Sun & PH: 10:00–22:00',
+    F:'Daily (Incl. PH): 08:00–21:00',
+    H:'Daily (Incl. PH): 08:00–20:00',
+    J:'Daily (Incl. PH): 08:00–00:00',
+    N:'Daily (Incl. PH): 19:00–00:00',
+    P:'Mon–Sat: 08:00–20:00 (No Sun/PH)',
+    Q:'Mon–Sat: 08:00–20:00 / Sun & PH: 10:00–22:00',
+    S:'Mon–Fri: 17:00–00:00 / Sat: 08:00–00:00 / Sun & PH: 10:00–22:00',
+    T:'Mon–Fri: 17:30–00:00 / Sat: 08:00–00:00 / Sun & PH: 10:00–22:00'
+};
+const getHours = c => { const k=(c||'').toUpperCase().trim().replace(/^\d/,''); return opHours[k]||opHours[(c||'').toUpperCase().trim()]||'See roadside signs'; };
+const fmtMaxTime = set => { if(!set||!set.size) return '–'; return [...set].map(Number).sort((a,b)=>b-a).map(m=>m>=60?`${m/60}hr`:`${m}m`).join('/'); };
 
-        function formatMaxTimeStr(minutesSet) {
-            if (!minutesSet || minutesSet.size === 0) return 'Unknown';
-            const sortedMins = Array.from(minutesSet).map(Number).sort((a, b) => b - a);
-            const formatted = sortedMins.map(mins => {
-                if (mins === 120) return '2 Hrs';
-                if (mins === 60)  return '1 Hr';
-                if (mins === 30)  return '0.5 Hr';
-                return `${(mins / 60).toFixed(1).replace('.0', '')} Hrs`;
+// ═══════════════════════════════════════════════
+// ICONS
+// ═══════════════════════════════════════════════
+const mkIcon = c => new L.Icon({ iconUrl:`https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${c}.png`, shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[22,36], iconAnchor:[11,36], popupAnchor:[1,-30], shadowSize:[36,36] });
+const ICONS = { green:mkIcon('green'), red:mkIcon('red'), orange:mkIcon('orange'), gold:mkIcon('gold') };
+
+// ═══════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', async () => {
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
+    initMap();
+    setLoadingMsg('Downloading meter locations…');
+    await loadStaticMeterData();
+    populateVehicleTypeDropdown();
+    setLoadingMsg('Syncing live sensor data…');
+    await fetchRealtimeOccupancy();
+    hideLoading();
+    handleDeepLink();
+    updateSettingsStatus();
+    setInterval(fetchRealtimeOccupancy, 60000);
+});
+
+function setLoadingMsg(m) { const e=document.getElementById('loadingMsg'); if(e) e.textContent=m; }
+function hideLoading() {
+    const el = document.getElementById('loadingOverlay');
+    if (el) { el.classList.add('fade'); setTimeout(()=>{ el.remove(); if(map) map.invalidateSize(); }, 450); }
+}
+
+// ═══════════════════════════════════════════════
+// MAP
+// ═══════════════════════════════════════════════
+function initMap() {
+    map = L.map('map', { preferCanvas:true, zoomControl:false }).setView([22.3193,114.1694], 13);
+    tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OpenStreetMap contributors' }).addTo(map);
+    markerClusterGroup = L.markerClusterGroup({
+        chunkedLoading: true, maxClusterRadius: 45,
+        iconCreateFunction(cluster) {
+            const ms = cluster.getAllChildMarkers();
+            const hasV = ms.some(m => m.options.isVacant && !brokenSensors[m.options.meterId]);
+            const bg   = hasV ? '#16a34a' : '#dc2626';
+            const ring = hasV ? 'rgba(22,163,74,0.2)' : 'rgba(220,38,38,0.2)';
+            return L.divIcon({
+                html:`<div style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:${ring};border:2px solid ${bg}"><div style="width:30px;height:30px;border-radius:50%;background:${bg};color:white;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px">${ms.length}</div></div>`,
+                className:'custom-cluster-marker', iconSize:L.point(40,40)
             });
-            return formatted.join(' / ');
         }
+    });
+    map.addLayer(markerClusterGroup);
+    // Close panel when tapping map
+    map.on('click', () => closePanel());
+}
 
-        const vehicleTypeMap = {
-            'A': 'Private Car / Van / Taxi (私家車 / 輕型貨車 / 的士)',
-            'G': 'Goods Vehicle (貨車)',
-            'C': 'Coach / Bus (巴士 / 旅遊巴士)',
-            'D': 'Disabled Space (殘疾人士專用)'
-        };
-        const vehicleShortMap = { 'A': '🚗 Car', 'G': '🚚 Goods', 'C': '🚌 Bus', 'D': '♿ Disabled' };
+// ═══════════════════════════════════════════════
+// DATA — STATIC
+// ═══════════════════════════════════════════════
+function cleanCsv(text) {
+    const i = text.indexOf('ParkingSpaceId');
+    return i !== -1 ? text.substring(text.lastIndexOf('\n', i) + 1) : text;
+}
 
-        function getVehicleTypeName(code) {
-            if (!code) return 'Unknown (未知)';
-            return vehicleTypeMap[code.toUpperCase().trim()] || `${code} (Other / 其他車輛)`;
+async function loadStaticMeterData() {
+    try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (raw) {
+            const { ts, data } = JSON.parse(raw);
+            if (Date.now() - ts < CACHE_TTL) { parkingMeters = data; return; }
         }
-        function getVehicleShortName(code) {
-            if (!code) return '❓ Unknown';
-            return vehicleShortMap[code.toUpperCase().trim()] || `🚘 ${code}`;
-        }
-
-        const greenIcon  = new L.Icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25,41], iconAnchor: [12,41], popupAnchor: [1,-34], shadowSize: [41,41] });
-        const redIcon    = new L.Icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25,41], iconAnchor: [12,41], popupAnchor: [1,-34], shadowSize: [41,41] });
-        const orangeIcon = new L.Icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25,41], iconAnchor: [12,41], popupAnchor: [1,-34], shadowSize: [41,41] });
-        const goldIcon   = new L.Icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-gold.png',   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25,41], iconAnchor: [12,41], popupAnchor: [1,-34], shadowSize: [41,41] });
-
-        function setLoadingMsg(msg) {
-            const el = document.getElementById('loadingMsg');
-            if (el) el.innerText = msg;
-        }
-        function hideLoading() {
-            const el = document.getElementById('loadingOverlay');
-            if (el) {
-                el.classList.add('hidden');
-                setTimeout(() => el.remove(), 400);
-            }
-            // Tell Leaflet to recalculate map size now that overlay is gone
-            if (map) map.invalidateSize();
-        }
-
-        window.addEventListener('DOMContentLoaded', async () => {
-            initMap();
-            updateWatchlistUI();
-            setLoadingMsg('Downloading meter locations…');
-            await loadStaticMeterData();
-            populateVehicleTypeDropdown();
-            setLoadingMsg('Syncing live sensor data…');
-            await fetchRealtimeOccupancy();
-            hideLoading();
-            handleDeepLink();
-            setInterval(fetchRealtimeOccupancy, 60000);
+    } catch(_) {}
+    try {
+        const res = await fetch(SPACES_URL);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        let csv = cleanCsv(await res.text());
+        await new Promise(resolve => {
+            Papa.parse(csv, { header:true, skipEmptyLines:true, complete(r) {
+                r.data.forEach(row => {
+                    if (row.ParkingSpaceId && row.Latitude && row.Longitude) {
+                        parkingMeters[row.ParkingSpaceId] = {
+                            id: row.ParkingSpaceId,
+                            lat: parseFloat(row.Latitude), lng: parseFloat(row.Longitude),
+                            street: row.Street_tc || row.Street || 'Unknown',
+                            district: row.District_tc || row.District || '',
+                            type: row.VehicleType || 'A',
+                            maxTime: row.LPP || '120', opPeriod: row.OperatingPeriod || 'D',
+                            timeUnit: row.TimeUnit || '15', fee: parseFloat(row.PaymentUnit || '4.00')
+                        };
+                    }
+                });
+                try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts:Date.now(), data:parkingMeters })); } catch(_){}
+                resolve();
+            }, error:()=>resolve() });
         });
+    } catch(err) {
+        console.error('Static load failed:', err);
+        setLoadingMsg('⚠️ Load error — check connection.');
+    }
+}
 
-        function initMap() {
-            map = L.map('map', { preferCanvas: true }).setView([22.3193, 114.1694], 13);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
-
-            markerClusterGroup = L.markerClusterGroup({
-                chunkedLoading: true,
-                maxClusterRadius: 45,
-                iconCreateFunction: function(cluster) {
-                    const markers = cluster.getAllChildMarkers();
-                    let clusterHasVacancy = false;
-                    for (let i = 0; i < markers.length; i++) {
-                        if (markers[i].options.isVacant && !brokenSensors[markers[i].options.meterId]) {
-                            clusterHasVacancy = true;
-                            break;
-                        }
-                    }
-                    const colorClass = clusterHasVacancy ? 'bg-green-600' : 'bg-red-600';
-                    const ringClass  = clusterHasVacancy ? 'border-green-300 bg-green-500/20' : 'border-red-300 bg-red-500/20';
-                    return L.divIcon({
-                        html: `<div class="w-10 h-10 rounded-full flex items-center justify-center p-1 ${ringClass} border shadow-inner custom-cluster-marker"><div class="w-8 h-8 rounded-full ${colorClass} text-white flex items-center justify-center font-bold text-xs shadow-md">${markers.length}</div></div>`,
-                        className: 'custom-cluster-wrapper',
-                        iconSize: L.point(40, 40)
-                    });
-                }
-            });
-            map.addLayer(markerClusterGroup);
-        }
-
-        function requestNotificationPermission() {
-            Notification.requestPermission().then(permission => {
-                if (permission === 'granted') {
-                    document.getElementById('notifyBtn').innerText = "✅ Alerts Enabled";
-                    document.getElementById('notifyBtn').classList.replace('bg-blue-600', 'bg-green-600');
-                }
-            });
-        }
-
-        function cleanGovernmentCsv(text) {
-            const headerIndex = text.indexOf("ParkingSpaceId");
-            if (headerIndex !== -1) {
-                const lastNewline = text.lastIndexOf("\n", headerIndex);
-                return text.substring(lastNewline + 1);
-            }
-            return text;
-        }
-
-        const CACHE_KEY = 'parkgaai_static_v1';   // new key — avoids stale v6.2 format
-        const CACHE_TTL = 24 * 60 * 60 * 1000;    // 24 hours in ms
-        // One-time cleanup: remove old v6.2 cache key if present
-        localStorage.removeItem('hk_meters_static_cache_v7');
-
-        async function loadStaticMeterData() {
-            // Load from cache only if it exists AND is less than 24 hours old
-            try {
-                const raw = localStorage.getItem(CACHE_KEY);
-                if (raw) {
-                    const { ts, data } = JSON.parse(raw);
-                    if (Date.now() - ts < CACHE_TTL) {
-                        parkingMeters = data;
-                        document.getElementById('refreshStatus').innerText = "Loaded cached map grids.";
-                        return;
-                    }
-                }
-            } catch (e) { /* corrupted cache — fall through to fresh download */ }
-
-            document.getElementById('refreshStatus').innerText = "Downloading map grids...";
-            try {
-                const res = await fetch(SPACES_INFO_URL);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                let csvText = await res.text();
-                csvText = cleanGovernmentCsv(csvText);
-
-                // Wrap Papa.parse in a Promise so we truly await completion
-                await new Promise((resolve) => {
-                    Papa.parse(csvText, {
-                        header: true, skipEmptyLines: true,
-                        complete: (results) => {
-                            results.data.forEach(row => {
-                                if (row.ParkingSpaceId && row.Latitude && row.Longitude) {
-                                    parkingMeters[row.ParkingSpaceId] = {
-                                        id:       row.ParkingSpaceId,
-                                        lat:      parseFloat(row.Latitude),
-                                        lng:      parseFloat(row.Longitude),
-                                        street:   row.Street_tc || row.Street || "Unknown Street",
-                                        district: row.District_tc || row.District || "",
-                                        type:     row.VehicleType || "A",
-                                        maxTime:  row.LPP || "120",
-                                        opPeriod: row.OperatingPeriod || "D",
-                                        timeUnit: row.TimeUnit || "15",
-                                        fee:      row.PaymentUnit || "4.00"
-                                    };
-                                }
-                            });
-                            try {
-                                localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: parkingMeters }));
-                            } catch (_) { /* storage full — skip cache */ }
-                            resolve();
-                        },
-                        error: () => resolve()
-                    });
+// ═══════════════════════════════════════════════
+// DATA — OCCUPANCY
+// ═══════════════════════════════════════════════
+async function fetchRealtimeOccupancy() {
+    document.getElementById('refreshStatus').textContent = 'Syncing…';
+    try {
+        const res = await fetch(OCCUPANCY_URL);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        let csv = cleanCsv(await res.text());
+        await new Promise(resolve => {
+            Papa.parse(csv, { header:true, skipEmptyLines:true, complete(r) {
+                const prev = { ...occupancyState };
+                r.data.forEach(row => {
+                    const id = row.ParkingSpaceId; if (!id) return;
+                    const cur = row.OccupancyStatus;
+                    occupancyState[id] = cur;
+                    if (watchlist.includes(id) && prev[id]==='O' && cur==='V' && !brokenSensors[id])
+                        triggerNotification(id);
                 });
-            } catch (err) {
-                console.error("Static data fault: ", err);
-                document.getElementById('refreshStatus').innerText = "⚠️ Load error — check connection.";
-            }
+                renderMapMarkers();
+                updateSavedBadge();
+                document.getElementById('refreshStatus').textContent = 'Sync: ' + new Date().toLocaleTimeString('en-HK',{hour:'2-digit',minute:'2-digit'});
+                // If saved panel is open, refresh it
+                if (currentPanel === 'saved') renderSavedPanel();
+                resolve();
+            }, error:()=>resolve() });
+        });
+    } catch(err) {
+        document.getElementById('refreshStatus').textContent = 'Sync error';
+    }
+}
+
+// ═══════════════════════════════════════════════
+// MARKERS
+// ═══════════════════════════════════════════════
+function getSelectedType() { return document.getElementById('vehicleTypeFilter')?.value || 'ALL'; }
+
+function renderMapMarkers() {
+    markerClusterGroup.clearLayers();
+    cachedMarkersMap = {};
+    const sel = getSelectedType();
+    const toAdd = [];
+    Object.keys(parkingMeters).forEach(id => {
+        const d = parkingMeters[id];
+        if (sel !== 'ALL' && d.type.toUpperCase().trim() !== sel) return;
+        const isVacant = occupancyState[id] === 'V';
+        const icon = brokenSensors[id] ? ICONS.orange : (isVacant ? ICONS.green : ICONS.red);
+        const marker = L.marker([d.lat, d.lng], { icon, isVacant, meterId:id })
+            .bindPopup(() => buildPopup(id, d), { maxWidth:300 });
+        toAdd.push(marker);
+        cachedMarkersMap[id] = marker;
+    });
+    markerClusterGroup.addLayers(toAdd);
+}
+
+function populateVehicleTypeDropdown() {
+    const el = document.getElementById('vehicleTypeFilter');
+    if (!el) return;
+    const types = new Set(Object.values(parkingMeters).map(m => m.type.toUpperCase().trim()));
+    el.innerHTML = '<option value="ALL">All Categories (全部車輛)</option>';
+    types.forEach(t => { const o=document.createElement('option'); o.value=t; o.textContent=getVehicleTypeName(t); el.appendChild(o); });
+}
+
+window.filterVehicleType = function() {
+    renderMapMarkers();
+    updateSavedBadge();
+    if (currentPanel === 'saved') renderSavedPanel();
+};
+
+// ═══════════════════════════════════════════════
+// POPUP BUILDER
+// ═══════════════════════════════════════════════
+function buildPopup(id, d) {
+    const isV = occupancyState[id] === 'V';
+    const isW = watchlist.includes(id);
+    const isBroken = !!brokenSensors[id];
+    const mapsUrl = `https://maps.google.com/maps?daddr=${d.lat},${d.lng}`;
+    const shareUrl = `${location.origin}${location.pathname}?meter=${id}&lat=${d.lat}&lng=${d.lng}`;
+    const fee = d.fee || 4.00;
+    const unit = parseInt(d.timeUnit) || 15;
+    const max  = parseInt(d.maxTime) || 120;
+    const cost = m => `HK$${Math.round((m/unit)*fee)}`;
+    const cmts = (userComments[id]||[]).map(c=>`<div style="background:#f8fafc;border-left:3px solid #f59e0b;padding:6px 8px;border-radius:0 6px 6px 0;font-size:11px;color:#374151;margin-bottom:4px">${c}</div>`).join('') || '<p style="font-size:11px;color:#9ca3af;font-style:italic">No driver notes yet.</p>';
+
+    return `<div style="font-family:-apple-system,system-ui,sans-serif;width:288px">
+        <div style="padding:14px 14px 10px;border-bottom:1px solid #f1f5f9">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+                <div>
+                    <p style="font-size:15px;font-weight:800;color:#0f172a;margin:0 0 2px">${d.street}</p>
+                    ${d.district?`<p style="font-size:11px;color:#94a3b8;margin:0">${d.district}</p>`:''}
+                </div>
+                <span style="flex-shrink:0;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700;background:${isV?'#dcfce7':'#fee2e2'};color:${isV?'#15803d':'#dc2626'}">
+                    ${isV?'● Vacant':'● Occupied'}
+                </span>
+            </div>
+            <p style="font-size:10px;color:#94a3b8;margin:6px 0 0;font-family:monospace">${id} · ${getVehicleShortName(d.type)}${isBroken?' · <span style="color:#d97706">⚠️ Flagged</span>':''}</p>
+        </div>
+
+        <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid #f1f5f9;font-size:12px;color:#475569">
+            <p style="font-weight:700;color:#0f172a;margin:0 0 6px;font-size:13px">🪙 Meter Info</p>
+            <p style="margin:0 0 3px">⏰ ${getHours(d.opPeriod)}</p>
+            <p style="margin:0 0 3px">💰 HK$${fee.toFixed(2)} / ${unit} min · Max ${max} min</p>
+        </div>
+
+        <div style="padding:10px 14px;border-bottom:1px solid #f1f5f9;background:#fffbeb">
+            <p style="font-weight:700;color:#92400e;margin:0 0 8px;font-size:12px">💵 Cost Estimate</p>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+                ${[30,60,90,120].filter(m=>m<=max||m===30).map(m=>`<div style="background:white;border:1px solid #fde68a;border-radius:8px;text-align:center;padding:6px 4px"><div style="font-weight:800;font-size:12px;color:#b45309">${cost(m)}</div><div style="font-size:10px;color:#d97706">${m}m</div></div>`).join('')}
+            </div>
+        </div>
+
+        <div style="padding:10px 14px;border-bottom:1px solid #f1f5f9;display:flex;flex-direction:column;gap:8px">
+            <a href="${mapsUrl}" target="_blank" style="display:block;text-align:center;background:#16a34a;color:white;font-weight:700;font-size:13px;padding:10px;border-radius:12px;text-decoration:none">🗺️ Navigate via Google Maps</a>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+                <button onclick="toggleWatch('${id}')" style="padding:8px 4px;border-radius:10px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:${isW?'#fee2e2':'#eff6ff'};color:${isW?'#dc2626':'#2563eb'}">${isW?'🔕 Untrack':'🔔 Track'}</button>
+                <button onclick="watchEntireStreet('${d.street}')" style="padding:8px 4px;border-radius:10px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:#f1f5f9;color:#475569">🏘️ Block</button>
+                <button onclick="shareSpot('${id}','${shareUrl}')" style="padding:8px 4px;border-radius:10px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:#f1f5f9;color:#475569">🔗 Share</button>
+            </div>
+        </div>
+
+        <div style="padding:10px 14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <span style="font-size:12px;font-weight:700;color:#374151">💬 Driver Notes</span>
+                <button onclick="toggleSensorFlag('${id}')" style="border:none;background:none;font-size:11px;cursor:pointer;text-decoration:underline;color:${isBroken?'#2563eb':'#dc2626'}">${isBroken?'✅ Clear Flag':'❌ Flag Wrong Signal'}</button>
+            </div>
+            <div style="max-height:80px;overflow-y:auto;margin-bottom:8px">${cmts}</div>
+            <div style="display:flex;gap:6px">
+                <input id="cmt-${id}" type="text" placeholder="Leave a tip for drivers…" style="flex:1;border:1px solid #e2e8f0;border-radius:10px;padding:7px 10px;font-size:12px;outline:none">
+                <button onclick="submitComment('${id}')" style="background:#e2e8f0;border:none;border-radius:10px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;color:#374151">Post</button>
+            </div>
+        </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════
+// PANEL MANAGEMENT
+// ═══════════════════════════════════════════════
+function openPanel(title, renderFn) {
+    document.getElementById('panelTitle').textContent = title;
+    document.getElementById('panelContent').innerHTML = '';
+    renderFn();
+    document.getElementById('panel').classList.add('open');
+}
+
+function closePanel() {
+    document.getElementById('panel').classList.remove('open');
+    currentPanel = null;
+    // Reset active nav
+    ['navNearMe','navSaved','navReport'].forEach(id => document.getElementById(id)?.classList.remove('active'));
+}
+
+// ═══════════════════════════════════════════════
+// SEARCH
+// ═══════════════════════════════════════════════
+window.searchLocation = async function() {
+    const q = document.getElementById('searchInput').value.trim();
+    if (!q) return;
+    document.getElementById('refreshStatus').textContent = 'Locating…';
+    try {
+        const res  = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q+', Hong Kong')}&limit=1`, { headers:{'User-Agent':'ParkGaai/1.0'} });
+        const data = await res.json();
+        if (data.length > 0) {
+            const lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
+            map.setView([lat, lng], 16);
+            if (searchMarker) map.removeLayer(searchMarker);
+            searchMarker = L.marker([lat,lng],{icon:ICONS.gold}).addTo(map).bindPopup(`<b>📍 ${data[0].display_name}</b>`).openPopup();
+            calculateNearestMeters(lat, lng);
+        } else {
+            alert('Location not found. Try another search term.');
         }
+    } catch(e) { console.error(e); }
+};
 
-        function populateVehicleTypeDropdown() {
-            const selectEl = document.getElementById('vehicleTypeFilter');
-            selectEl.innerHTML = '<option value="ALL">All Categories (顯示全部車輛)</option>';
-            let uniqueTypes = new Set();
-            Object.values(parkingMeters).forEach(meter => {
-                if (meter.type) uniqueTypes.add(meter.type.toUpperCase().trim());
-            });
-            uniqueTypes.forEach(type => {
-                const option = document.createElement('option');
-                option.value = type;
-                option.innerText = getVehicleTypeName(type);
-                selectEl.appendChild(option);
-            });
-        }
+function calculateNearestMeters(lat, lng) {
+    const origin = L.latLng(lat, lng);
+    const sel = getSelectedType();
+    const groups = {};
+    Object.keys(parkingMeters).forEach(id => {
+        const m = parkingMeters[id];
+        if (sel !== 'ALL' && m.type.toUpperCase().trim() !== sel) return;
+        const dist = origin.distanceTo(L.latLng(m.lat, m.lng));
+        const s = m.street;
+        if (!groups[s]) groups[s] = { street:s, total:0, vacant:0, dist:Infinity, lat:m.lat, lng:m.lng, maxTimes:new Set() };
+        groups[s].total++;
+        groups[s].maxTimes.add(m.maxTime);
+        if (occupancyState[id]==='V' && !brokenSensors[id]) groups[s].vacant++;
+        if (dist < groups[s].dist) { groups[s].dist=dist; groups[s].lat=m.lat; groups[s].lng=m.lng; }
+    });
+    const sorted = Object.values(groups).sort((a,b)=>a.dist-b.dist).slice(0,6);
+    currentPanel = 'search';
+    openPanel('Nearest Parking Blocks', () => renderSearchResults(sorted));
+}
 
-        window.filterVehicleType = function() {
-            renderMapMarkers();
-            updateWatchlistUI();
-            if (searchMarker) {
-                const centerLoc = searchMarker.getLatLng();
-                calculateNearestMeters(centerLoc.lat, centerLoc.lng);
-            }
-        };
+// Google-Maps-style search result cards
+function renderSearchResults(results) {
+    const c = document.getElementById('panelContent');
+    if (!results.length) { c.innerHTML = '<p style="padding:20px;color:#94a3b8;font-size:13px;text-align:center">No parking found nearby.</p>'; return; }
+    c.innerHTML = results.map(g => {
+        const distStr  = g.dist < 1000 ? `${Math.round(g.dist)}m` : `${(g.dist/1000).toFixed(1)}km`;
+        const hasSpace = g.vacant > 0;
+        const mapsUrl  = `https://maps.google.com/maps?daddr=${g.lat},${g.lng}`;
+        const durStr   = fmtMaxTime(g.maxTimes);
+        return `
+        <div onclick="focusOnStreet('${encodeURIComponent(g.street)}')"
+            style="display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-bottom:1px solid #f8fafc;cursor:pointer;transition:background 0.15s"
+            onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+            <div style="width:38px;height:38px;border-radius:50%;background:${hasSpace?'#dcfce7':'#fee2e2'};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🅿️</div>
+            <div style="flex:1;min-width:0">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px">
+                    <p style="font-size:14px;font-weight:700;color:#0f172a;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:65%">${g.street}</p>
+                    <span style="font-size:12px;color:#64748b;flex-shrink:0">${distStr} away</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+                    <span style="font-size:12px;font-weight:700;color:${hasSpace?'#16a34a':'#dc2626'}">${hasSpace?`● ${g.vacant} vacant`:'● Full'}</span>
+                    <span style="color:#e2e8f0">·</span>
+                    <span style="font-size:12px;color:#94a3b8">${g.total} spots · max ${durStr}</span>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:10px">
+                    <a href="${mapsUrl}" target="_blank" onclick="event.stopPropagation()"
+                        style="flex:1;text-align:center;background:#eff6ff;color:#2563eb;font-weight:700;font-size:12px;padding:8px;border-radius:10px;text-decoration:none">🗺️ Navigate</a>
+                    <button onclick="event.stopPropagation();watchEntireStreet('${g.street}')"
+                        style="flex:1;background:#f1f5f9;color:#475569;font-weight:700;font-size:12px;padding:8px;border-radius:10px;border:none;cursor:pointer">⭐ Save Block</button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
 
-        async function fetchRealtimeOccupancy() {
-            document.getElementById('refreshStatus').innerText = "Syncing live sensors...";
-            try {
-                const res = await fetch(OCCUPANCY_URL);
-                let csvText = await res.text();
-                csvText = cleanGovernmentCsv(csvText);
+// ═══════════════════════════════════════════════
+// NEAR ME
+// ═══════════════════════════════════════════════
+window.triggerNearMe = function() {
+    if (!navigator.geolocation) { alert('Geolocation not supported on this device.'); return; }
+    document.getElementById('refreshStatus').textContent = 'Locating…';
+    navigator.geolocation.getCurrentPosition(
+        pos => {
+            const { latitude:lat, longitude:lng } = pos.coords;
+            map.setView([lat,lng], 16);
+            if (searchMarker) map.removeLayer(searchMarker);
+            searchMarker = L.marker([lat,lng],{icon:ICONS.gold}).addTo(map).bindPopup('<b>📍 Your Location</b>').openPopup();
+            calculateNearestMeters(lat, lng);
+        },
+        () => { openSettings(); },  // If denied, open settings to guide user
+        { enableHighAccuracy:true, timeout:10000 }
+    );
+};
 
-                await new Promise((resolve) => {
-                    Papa.parse(csvText, {
-                        header: true, skipEmptyLines: true,
-                        complete: (results) => {
-                            let previousState = { ...occupancyState };
-                            results.data.forEach(row => {
-                                const spaceId = row.ParkingSpaceId;
-                                if (spaceId) {
-                                    const currentStatus = row.OccupancyStatus;
-                                    occupancyState[spaceId] = currentStatus;
-                                    if (watchlist.includes(spaceId) && previousState[spaceId] === 'O' && currentStatus === 'V') {
-                                        if (!brokenSensors[spaceId]) { triggerSystemNotification(spaceId); }
-                                    }
-                                }
-                            });
-                            renderMapMarkers();
-                            updateWatchlistUI();
-                            document.getElementById('refreshStatus').innerText = `Sync: ${new Date().toLocaleTimeString()}`;
-                            resolve();
-                        },
-                        error: () => resolve()
-                    });
-                });
-            } catch (err) {
-                console.error("Sensor data fault: ", err);
-                document.getElementById('refreshStatus').innerText = "Live Sync Error.";
-            }
-        }
+// ═══════════════════════════════════════════════
+// SAVED (WATCHLIST) PANEL
+// ═══════════════════════════════════════════════
+function updateSavedBadge() {
+    const sel = getSelectedType();
+    const streets = buildWatchlistStreets(sel);
+    const count = Object.keys(streets).length;
+    const badge = document.getElementById('savedCount');
+    if (badge) { badge.textContent = count; badge.style.display = count > 0 ? 'inline' : 'none'; }
+}
 
-        function renderMapMarkers() {
-            markerClusterGroup.clearLayers();
-            const markersToInject = [];
-            cachedMarkersMap = {};
-            const selectedType = document.getElementById('vehicleTypeFilter').value;
+function buildWatchlistStreets(sel) {
+    const streets = {};
+    watchlist.forEach(id => {
+        const m = parkingMeters[id];
+        if (!m) return;
+        if (sel !== 'ALL' && m.type.toUpperCase().trim() !== sel) return;
+        const s = m.street;
+        if (!streets[s]) streets[s] = { street:s, total:0, vacant:0, lat:m.lat, lng:m.lng, types:new Set(), maxTimes:new Set() };
+        streets[s].total++;
+        streets[s].maxTimes.add(m.maxTime);
+        streets[s].types.add(m.type.toUpperCase().trim());
+        if (occupancyState[id]==='V' && !brokenSensors[id]) streets[s].vacant++;
+    });
+    return streets;
+}
 
-            Object.keys(parkingMeters).forEach(id => {
-                const data = parkingMeters[id];
-                const meterTypeUpper = data.type.toUpperCase().trim();
-                if (selectedType !== 'ALL' && meterTypeUpper !== selectedType) return;
+function openSavedPanel() {
+    currentPanel = 'saved';
+    document.getElementById('navSaved').classList.add('active');
+    openPanel(`Saved Spots ⭐`, renderSavedPanel);
+}
 
-                const status   = occupancyState[id] || 'O';
-                const isVacant = status === 'V';
-                const isWatched = watchlist.includes(id);
-
-                let activeIcon = isVacant ? greenIcon : redIcon;
-                if (brokenSensors[id]) { activeIcon = orangeIcon; }
-
-                const watchBtnText  = isWatched ? "🔕 Stop Tracking" : "🔔 Track Spot";
-                const watchBtnClass = isWatched ? "bg-red-500 text-white" : "bg-blue-600 text-white";
-
-                const googleMapsLink = `https://maps.google.com/maps?daddr=${data.lat},${data.lng}`;
-                const shareLink = `${location.origin}${location.pathname}?meter=${id}&lat=${data.lat}&lng=${data.lng}`;
-
-                let commentsHtml = "";
-                if (userComments[id] && userComments[id].length > 0) {
-                    userComments[id].forEach(cmt => {
-                        commentsHtml += `<div class="bg-gray-100 text-[11px] p-1.5 rounded text-gray-700 border-l-2 border-amber-500 break-words">${cmt}</div>`;
-                    });
-                } else {
-                    commentsHtml = `<p class="text-[11px] text-gray-400 italic">No driver notes left.</p>`;
-                }
-
-                const popupHtml = `
-                    <div class="font-sans text-sm w-full">
-                        <h3 class="font-bold text-gray-900 text-sm">${data.street}</h3>
-                        <p class="text-[11px] text-gray-400 mb-1">ID: <span class="font-mono font-bold">${id}</span></p>
-                        <p class="text-[11px] text-slate-600 font-medium mb-1.5">Type: ${getVehicleTypeName(data.type)}</p>
-
-                        <div class="flex items-center gap-1.5 mb-2.5">
-                            <span class="px-2 py-0.5 text-xs font-bold rounded ${isVacant ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
-                                ${isVacant ? '● Vacant' : '● Occupied'}
-                            </span>
-                            ${brokenSensors[id] ? '<span class="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded font-bold">⚠️ Flagged Broken</span>' : ''}
-                        </div>
-
-                        <div class="mb-3 text-[11px] text-slate-600 bg-slate-50 border border-slate-200 p-2 rounded space-y-1 leading-tight">
-                            <p class="font-bold text-slate-800 border-b pb-0.5 mb-1 flex items-center gap-1">🪙 Meter Rules (收費資情)</p>
-                            <p>🕐 <b>Hours:</b><br><span class="text-slate-700 font-medium">${getOperatingHours(data.opPeriod)}</span></p>
-                            <p>💰 <b>Rate:</b> HK$${parseFloat(data.fee).toFixed(2)} / ${data.timeUnit} mins (每 ${data.timeUnit} 分鐘)</p>
-                            <p>🚗 <b>Max Duration:</b> ${data.maxTime} mins (最長停車 ${data.maxTime} 分鐘)</p>
-                        </div>
-
-                        <div class="flex flex-col space-y-1.5 border-b pb-2.5 mb-2.5">
-                            <div class="grid grid-cols-2 gap-1.5">
-                                <a href="${googleMapsLink}" target="_blank" class="bg-emerald-600 text-center text-white font-bold text-xs py-1.5 rounded shadow hover:bg-emerald-700 transition">
-                                    🗺️ Navigate
-                                </a>
-                                <button onclick="shareSpot('${id}','${shareLink}')" class="bg-slate-100 text-slate-700 font-bold text-xs py-1.5 rounded shadow hover:bg-slate-200 transition border border-slate-200">
-                                    🔗 Share Spot
-                                </button>
-                            </div>
-                            <div class="grid grid-cols-2 gap-1">
-                                <button onclick="toggleWatchspace('${id}')" class="${watchBtnClass} font-semibold text-[11px] py-1.5 rounded transition">
-                                    ${watchBtnText}
-                                </button>
-                                <button onclick="watchEntireStreet('${data.street}')" class="bg-slate-700 text-white font-semibold text-[11px] py-1.5 rounded hover:bg-slate-800 transition">
-                                    🏘️ Watch Block
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="space-y-1.5">
-                            <div class="flex justify-between items-center">
-                                <span class="text-xs font-bold text-gray-700">💬 Driver Updates</span>
-                                <button onclick="toggleSensorFlag('${id}')" class="text-[10px] underline ${brokenSensors[id] ? 'text-blue-600 font-bold' : 'text-red-500'}">
-                                    ${brokenSensors[id] ? 'Clear Fault Flag' : '❌ Report Wrong Signal'}
-                                </button>
-                            </div>
-                            <div class="max-h-20 overflow-y-auto space-y-1 my-1">
-                                ${commentsHtml}
-                            </div>
-                            <div class="flex gap-1 mt-1">
-                                <input id="input-${id}" type="text" placeholder="Add tip..." class="border text-xs px-2 py-1 rounded flex-1 bg-gray-50 focus:outline-none" />
-                                <button onclick="submitComment('${id}')" class="bg-gray-200 text-gray-700 px-2 py-1 text-xs rounded hover:bg-gray-300 font-medium">Post</button>
-                            </div>
-                        </div>
+function renderSavedPanel() {
+    const streets = buildWatchlistStreets(getSelectedType());
+    const arr = Object.values(streets);
+    const c = document.getElementById('panelContent');
+    if (!arr.length) {
+        c.innerHTML = `<div style="padding:32px 20px;text-align:center">
+            <p style="font-size:32px;margin:0 0 12px">⭐</p>
+            <p style="font-size:15px;font-weight:700;color:#0f172a;margin:0 0 6px">No saved spots yet</p>
+            <p style="font-size:13px;color:#94a3b8;margin:0">Search for a street and tap "Save Block", or tap any map pin and choose "Track".</p>
+        </div>`;
+        return;
+    }
+    c.innerHTML = arr.map(g => {
+        const hasV = g.vacant > 0;
+        const mapsUrl = `https://maps.google.com/maps?daddr=${g.lat},${g.lng}`;
+        const dur = fmtMaxTime(g.maxTimes);
+        const typeBadges = [...g.types].map(t=>`<span style="background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700">${getVehicleShortName(t)}</span>`).join('');
+        return `
+        <div onclick="focusOnStreet('${encodeURIComponent(g.street)}')" style="padding:14px 16px;border-bottom:1px solid #f8fafc;cursor:pointer">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+                <div style="flex:1;min-width:0">
+                    <p style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${g.street}</p>
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:3px">
+                        <span style="font-size:12px;font-weight:700;color:${hasV?'#16a34a':'#dc2626'}">${hasV?`● ${g.vacant} vacant`:'● Full'}</span>
+                        <span style="color:#e2e8f0">·</span>
+                        <span style="font-size:12px;color:#94a3b8">${g.total} spots · ${dur}</span>
                     </div>
-                `;
+                    <div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">${typeBadges}</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+                <a href="${mapsUrl}" target="_blank" onclick="event.stopPropagation()"
+                    style="flex:1;text-align:center;background:#dcfce7;color:#16a34a;font-weight:700;font-size:12px;padding:9px;border-radius:10px;text-decoration:none">🗺️ Navigate</a>
+                <button onclick="event.stopPropagation();unwatchEntireStreet('${encodeURIComponent(g.street)}')"
+                    style="flex:1;background:#fee2e2;color:#dc2626;font-weight:700;font-size:12px;padding:9px;border-radius:10px;border:none;cursor:pointer">✕ Remove</button>
+            </div>
+        </div>`;
+    }).join('');
+}
 
-                const marker = L.marker([data.lat, data.lng], { icon: activeIcon, isVacant: isVacant, meterId: id }).bindPopup(popupHtml);
-                markersToInject.push(marker);
-                cachedMarkersMap[id] = marker;
-            });
+// ═══════════════════════════════════════════════
+// REPORT PANEL
+// ═══════════════════════════════════════════════
+function openReportPanel() {
+    currentPanel = 'report';
+    document.getElementById('navReport').classList.add('active');
+    openPanel('Report a Problem 🚨', () => {
+        const flaggedList = Object.keys(brokenSensors).map(id => {
+            const m = parkingMeters[id];
+            return m ? `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f8fafc">
+                <div>
+                    <p style="font-size:13px;font-weight:700;color:#0f172a;margin:0">${m.street}</p>
+                    <p style="font-size:11px;color:#94a3b8;margin:0">${id}</p>
+                </div>
+                <button onclick="clearFlag('${id}')" style="background:#f1f5f9;border:none;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;color:#64748b;cursor:pointer">Clear</button>
+            </div>` : '';
+        }).join('');
+        document.getElementById('panelContent').innerHTML = `
+            <div style="padding:16px">
+                <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:14px;margin-bottom:16px">
+                    <p style="font-weight:700;color:#c2410c;margin:0 0 6px;font-size:14px">How to report a faulty sensor:</p>
+                    <p style="font-size:13px;color:#9a3412;margin:0">1. Tap any <b>orange 🔶</b> or incorrect map pin<br>2. Inside the popup, tap <b>"❌ Flag Wrong Signal"</b><br>3. The pin turns orange and notifications are muted for that space.</p>
+                </div>
+                ${flaggedList ? `<p style="font-size:13px;font-weight:700;color:#0f172a;margin:0 0 8px">Your flagged sensors (${Object.keys(brokenSensors).length}):</p>${flaggedList}` : '<p style="font-size:13px;color:#94a3b8;text-align:center;padding:12px 0">No sensors flagged yet.</p>'}
+            </div>`;
+    });
+}
 
-            markerClusterGroup.addLayers(markersToInject);
-        }
+window.clearFlag = function(id) {
+    delete brokenSensors[id];
+    localStorage.setItem('hk_meter_broken', JSON.stringify(brokenSensors));
+    renderMapMarkers();
+    openReportPanel(); // re-render
+};
 
-        window.findNearMe = function() {
-            if (!navigator.geolocation) {
-                alert('Geolocation is not supported by your browser.');
-                return;
-            }
-            const btn = document.getElementById('nearMeBtn');
-            btn.innerText = '📡 Locating…';
-            btn.disabled = true;
+// ═══════════════════════════════════════════════
+// SETTINGS
+// ═══════════════════════════════════════════════
+function openSettings() {
+    document.getElementById('settingsModal').classList.add('open');
+    updateSettingsStatus();
+}
+function closeSettings() { document.getElementById('settingsModal').classList.remove('open'); }
 
-            navigator.geolocation.getCurrentPosition(
-                function(pos) {
-                    const lat = pos.coords.latitude;
-                    const lng = pos.coords.longitude;
-                    map.setView([lat, lng], 16);
-
-                    if (searchMarker) map.removeLayer(searchMarker);
-                    searchMarker = L.marker([lat, lng], { icon: goldIcon })
-                        .addTo(map)
-                        .bindPopup('<b>📡 Your Location</b>')
-                        .openPopup();
-
-                    calculateNearestMeters(lat, lng);
-                    btn.innerText = '📡 Near Me — 我附近 (GPS)';
-                    btn.disabled = false;
-                },
-                function() {
-                    alert('Could not get your location. Please allow location access and try again.');
-                    btn.innerText = '📡 Near Me — 我附近 (GPS)';
-                    btn.disabled = false;
-                },
-                { enableHighAccuracy: true, timeout: 10000 }
-            );
-        };
-
-        async function searchLocation() {
-            const query = document.getElementById('searchInput').value.trim();
-            if (!query) return;
-            document.getElementById('refreshStatus').innerText = "Locating target...";
-            try {
-                const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ", Hong Kong")}&limit=1`;
-                const response = await fetch(url, { headers: { 'User-Agent': 'HK-Smart-Meter-Finder' } });
-                const data = await response.json();
-
-                if (data && data.length > 0) {
-                    const targetLat = parseFloat(data[0].lat);
-                    const targetLng = parseFloat(data[0].lon);
-                    map.setView([targetLat, targetLng], 16);
-
-                    if (searchMarker) map.removeLayer(searchMarker);
-                    searchMarker = L.marker([targetLat, targetLng], { icon: goldIcon }).addTo(map)
-                        .bindPopup(`<b>📍 Destination:</b><br><span class="text-xs text-gray-600">${data[0].display_name}</span>`).openPopup();
-
-                    calculateNearestMeters(targetLat, targetLng);
-                } else {
-                    alert("Location not found. Try variations including regional keywords.");
-                }
-            } catch (err) {
-                console.error("Nominatim parse fault: ", err);
-            } finally {
-                document.getElementById('refreshStatus').innerText = `Sync: ${new Date().toLocaleTimeString()}`;
-            }
-        }
-
-        function calculateNearestMeters(targetLat, targetLng) {
-            const targetLatLng = L.latLng(targetLat, targetLng);
-            let streetGroups = {};
-            const selectedType = document.getElementById('vehicleTypeFilter').value;
-
-            Object.keys(parkingMeters).forEach(id => {
-                const meter = parkingMeters[id];
-                const meterTypeUpper = meter.type.toUpperCase().trim();
-                if (selectedType !== 'ALL' && meterTypeUpper !== selectedType) return;
-
-                const streetName = meter.street;
-                const status     = occupancyState[id] || 'O';
-                const isVacant   = status === 'V';
-                const distance   = targetLatLng.distanceTo(L.latLng(meter.lat, meter.lng));
-
-                if (!streetGroups[streetName]) {
-                    streetGroups[streetName] = { street: streetName, total: 0, vacant: 0, minDistance: Infinity, lat: meter.lat, lng: meter.lng, maxTimes: new Set() };
-                }
-
-                streetGroups[streetName].total++;
-                streetGroups[streetName].maxTimes.add(meter.maxTime);
-                if (isVacant && !brokenSensors[id]) streetGroups[streetName].vacant++;
-                if (distance < streetGroups[streetName].minDistance) {
-                    streetGroups[streetName].minDistance = distance;
-                    streetGroups[streetName].lat = meter.lat;
-                    streetGroups[streetName].lng = meter.lng;
-                }
-            });
-
-            let sortedStreets = Object.values(streetGroups);
-            sortedStreets.sort((a, b) => a.minDistance - b.minDistance);
-            displaySearchResults(sortedStreets.slice(0, 5));
-        }
-
-        function displaySearchResults(results) {
-            const container = document.getElementById('searchResultsContainer');
-            container.classList.remove('hidden');
-            container.innerHTML = `<p class="text-[11px] font-bold text-slate-500 mb-1">Nearest Matching Street Blocks:</p>`;
-
-            if (results.length === 0) {
-                container.innerHTML += `<p class="text-xs text-gray-400 italic">No matching spaces nearby.</p>`;
-                return;
-            }
-
-            results.forEach(group => {
-                const distanceString = group.minDistance < 1000 ? `${Math.round(group.minDistance)}m` : `${(group.minDistance / 1000).toFixed(1)}km`;
-                const hasVacancy     = group.vacant > 0;
-                const badgeClass     = hasVacancy ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200';
-                const googleMapsLink = `https://maps.google.com/maps?daddr=${group.lat},${group.lng}`;
-                const durationStr    = formatMaxTimeStr(group.maxTimes);
-
-                container.innerHTML += `
-                    <div onclick="focusOnStreet('${encodeURIComponent(group.street)}')" class="bg-slate-50 hover:bg-blue-50 border border-slate-200 p-2.5 rounded shadow-sm cursor-pointer flex flex-col transition text-xs space-y-2">
-                        <div class="flex justify-between items-center w-full">
-                            <span class="font-bold text-gray-800 truncate max-w-[65%]">${group.street} <span class="text-[10px] text-slate-500 font-medium">(${durationStr})</span></span>
-                            <span class="text-[10px] font-semibold text-blue-600 flex-shrink-0">📍 ${distanceString} away</span>
-                        </div>
-                        <div class="flex justify-between items-center w-full text-[11px]">
-                            <span class="text-gray-500">Total Size: <b>${group.total}</b> spots</span>
-                            <span class="px-2 py-0.5 border rounded font-bold text-[10px] ${badgeClass}">${group.vacant} Vacant</span>
-                        </div>
-                        <div class="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-slate-200">
-                            <a href="${googleMapsLink}" target="_blank" onclick="event.stopPropagation();" class="bg-emerald-600 text-center text-white font-bold text-[11px] py-1 rounded shadow hover:bg-emerald-700 transition">
-                                🗺️ Start GPS
-                            </a>
-                            <button onclick="event.stopPropagation(); watchEntireStreet('${group.street}');" class="bg-blue-600 text-white font-bold text-[11px] py-1 rounded shadow hover:bg-blue-700 transition">
-                                ⭐ Favorite Block
-                            </button>
-                        </div>
-                    </div>
-                `;
-            });
-        }
-
-        window.focusOnStreet = function(encodedStreetName) {
-            const streetName = decodeURIComponent(encodedStreetName);
-            let bounds = L.latLngBounds();
-            let matchedCount = 0;
-            const selectedType = document.getElementById('vehicleTypeFilter').value;
-            Object.keys(parkingMeters).forEach(id => {
-                const meter = parkingMeters[id];
-                if (meter.street === streetName) {
-                    const meterTypeUpper = meter.type.toUpperCase().trim();
-                    if (selectedType !== 'ALL' && meterTypeUpper !== selectedType) return;
-                    bounds.extend([meter.lat, meter.lng]);
-                    matchedCount++;
-                }
-            });
-            if (matchedCount > 0) { map.fitBounds(bounds, { maxZoom: 18, padding: [40, 40] }); }
-        };
-
-        window.watchEntireStreet = function(streetName) {
-            const selectedType = document.getElementById('vehicleTypeFilter').value;
-            Object.keys(parkingMeters).forEach(id => {
-                const meter = parkingMeters[id];
-                if (meter.street === streetName) {
-                    const meterTypeUpper = meter.type.toUpperCase().trim();
-                    if (selectedType !== 'ALL' && meterTypeUpper !== selectedType) return;
-                    if (!watchlist.includes(id)) { watchlist.push(id); }
-                }
-            });
-            localStorage.setItem('hk_meter_watchlist', JSON.stringify(watchlist));
-            renderMapMarkers();
-            updateWatchlistUI();
-        };
-
-        window.unwatchEntireStreet = function(encodedStreetName) {
-            const streetName   = decodeURIComponent(encodedStreetName);
-            const selectedType = document.getElementById('vehicleTypeFilter').value;
-            watchlist = watchlist.filter(id => {
-                const meter = parkingMeters[id];
-                if (!meter) return false;
-                if (meter.street === streetName) {
-                    const meterTypeUpper = meter.type.toUpperCase().trim();
-                    if (selectedType !== 'ALL' && meterTypeUpper !== selectedType) return true;
-                    return false;
-                }
-                return true;
-            });
-            localStorage.setItem('hk_meter_watchlist', JSON.stringify(watchlist));
-            renderMapMarkers();
-            updateWatchlistUI();
-        };
-
-        window.toggleSensorFlag = function(id) {
-            if (brokenSensors[id]) { delete brokenSensors[id]; } else {
-                brokenSensors[id] = true;
-                const logMsg = `[Flagged incorrect at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}]`;
-                if (!userComments[id]) userComments[id] = [];
-                userComments[id].unshift(logMsg);
-            }
-            localStorage.setItem('hk_meter_broken', JSON.stringify(brokenSensors));
-            localStorage.setItem('hk_meter_comments', JSON.stringify(userComments));
-            map.closePopup();
-            renderMapMarkers();
-            updateWatchlistUI();
-        };
-
-        window.submitComment = function(id) {
-            const inputEl = document.getElementById(`input-${id}`);
-            if (!inputEl || !inputEl.value.trim()) return;
-            const timeStamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const formattedComment = `(${timeStamp}) ${inputEl.value.trim()}`;
-            if (!userComments[id]) userComments[id] = [];
-            userComments[id].unshift(formattedComment);
-            localStorage.setItem('hk_meter_comments', JSON.stringify(userComments));
-            map.closePopup();
-            renderMapMarkers();
-            updateWatchlistUI();
-        };
-
-        window.toggleWatchspace = function(id) {
-            if (watchlist.includes(id)) { watchlist = watchlist.filter(item => item !== id); } else { watchlist.push(id); }
-            localStorage.setItem('hk_meter_watchlist', JSON.stringify(watchlist));
-            renderMapMarkers();
-            updateWatchlistUI();
-        };
-
-        function updateWatchlistUI() {
-            const container    = document.getElementById('watchlistContainer');
-            let watchedStreets = {};
-            const selectedType = document.getElementById('vehicleTypeFilter').value;
-
-            watchlist.forEach(id => {
-                const meta = parkingMeters[id];
-                if (!meta) return;
-                const meterTypeUpper = meta.type.toUpperCase().trim();
-                if (selectedType !== 'ALL' && meterTypeUpper !== selectedType) return;
-
-                const streetName = meta.street;
-                const status     = occupancyState[id] || 'O';
-                const isVacant   = status === 'V' && !brokenSensors[id];
-
-                if (!watchedStreets[streetName]) {
-                    watchedStreets[streetName] = { street: streetName, totalTracked: 0, vacantCount: 0, lat: meta.lat, lng: meta.lng, types: new Set(), maxTimes: new Set() };
-                }
-                watchedStreets[streetName].totalTracked++;
-                watchedStreets[streetName].maxTimes.add(meta.maxTime);
-                watchedStreets[streetName].types.add(meta.type.toUpperCase().trim());
-                if (isVacant) watchedStreets[streetName].vacantCount++;
-            });
-
-            const streetArray = Object.values(watchedStreets);
-            document.getElementById('watchlistCount').innerText = streetArray.length;
-
-            if (streetArray.length === 0) {
-                container.innerHTML = `<p class="text-xs text-gray-400 italic">No spaces tracked. Click map markers to watch individual meters or entire blocks.</p>`;
-                return;
-            }
-
-            container.innerHTML = "";
-            streetArray.forEach(group => {
-                const isBlockVacant  = group.vacantCount > 0;
-                const badgeColor     = isBlockVacant ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
-                const googleMapsLink = `https://maps.google.com/maps?daddr=${group.lat},${group.lng}`;
-                const durationStr    = formatMaxTimeStr(group.maxTimes);
-
-                let typeBadgesHtml = '';
-                group.types.forEach(t => {
-                    typeBadgesHtml += `<span class="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-[10px] font-bold tracking-tight shadow-sm">${getVehicleShortName(t)}</span>`;
-                });
-
-                container.innerHTML += `
-                    <div onclick="focusOnStreet('${encodeURIComponent(group.street)}')" class="bg-slate-50 hover:bg-blue-50 border border-slate-200 p-2.5 rounded shadow-sm flex flex-col space-y-2.5 cursor-pointer transition">
-                        <div class="w-full flex justify-between items-start">
-                            <div class="truncate max-w-[65%]">
-                                <p class="font-bold text-gray-800 text-xs truncate mb-1">${group.street} <span class="text-[10px] text-slate-500 font-medium">(${durationStr})</span></p>
-                                <div class="flex flex-wrap gap-1 mt-1">${typeBadgesHtml}</div>
-                            </div>
-                            <div class="flex flex-col items-end gap-1 flex-shrink-0">
-                                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${badgeColor}">
-                                    ${isBlockVacant ? `${group.vacantCount} Vacant` : 'Full'}
-                                </span>
-                                <p class="text-[9px] text-slate-400 font-medium">Size: ${group.totalTracked} spots</p>
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-slate-200">
-                            <a href="${googleMapsLink}" target="_blank" class="bg-emerald-600 text-center text-white font-bold text-[11px] py-1 rounded shadow hover:bg-emerald-700 transition" onclick="event.stopPropagation();">
-                                🗺️ Start GPS
-                            </a>
-                            <button onclick="event.stopPropagation(); unwatchEntireStreet('${encodeURIComponent(group.street)}')" class="text-red-500 hover:text-red-700 text-[11px] font-bold text-right pr-1">
-                                Remove Street
-                            </button>
-                        </div>
-                    </div>
-                `;
-            });
-        }
-
-        // Share a specific meter spot
-        window.shareSpot = function(id, url) {
-            if (navigator.share) {
-                const meter = parkingMeters[id];
-                navigator.share({
-                    title: 'ParkGaai — Parking Spot',
-                    text: `Check out this parking spot on ${meter ? meter.street : 'HK'} via ParkGaai!`,
-                    url: url
-                }).catch(() => {});
+function updateSettingsStatus() {
+    // Location status
+    if ('permissions' in navigator) {
+        navigator.permissions.query({name:'geolocation'}).then(r => {
+            const box = document.getElementById('locationStatusBox');
+            const btn = document.getElementById('locationBtn');
+            if (!box) return;
+            if (r.state === 'granted') {
+                box.innerHTML = '✅ <b>Location access granted.</b> Near Me will work correctly.';
+                box.style.background = '#f0fdf4'; box.style.color = '#166534';
+                btn.textContent = '✅ Location Enabled'; btn.style.background = '#16a34a';
+            } else if (r.state === 'denied') {
+                box.innerHTML = '❌ <b>Location blocked.</b> To fix: tap the 🔒 icon in your browser address bar → allow Location, then reload.';
+                box.style.background = '#fef2f2'; box.style.color = '#991b1b';
             } else {
-                navigator.clipboard.writeText(url).then(() => {
-                    alert('✅ Link copied to clipboard!\n' + url);
-                }).catch(() => {
-                    prompt('Copy this link:', url);
-                });
+                box.innerHTML = '⚪ Location not yet requested. Tap the button below to enable.';
             }
-        };
+        }).catch(() => {});
+    }
+    // Notification status
+    const nBox = document.getElementById('notifStatusBox');
+    const nBtn = document.getElementById('notifPermBtn');
+    const iosHint = document.getElementById('iosHint');
+    if (!nBox) return;
+    const isIOS = /iphone|ipad/i.test(navigator.userAgent);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    if (isIOS && !isStandalone) {
+        nBox.innerHTML = '📱 <b>iPhone detected.</b> Notifications require installing ParkGaai to your Home Screen first.';
+        nBox.style.background = '#fffbeb'; nBox.style.color = '#92400e';
+        if (iosHint) iosHint.style.display = 'block';
+    } else if (!('Notification' in window)) {
+        nBox.innerHTML = '❌ Your browser does not support notifications.';
+        nBox.style.background = '#fef2f2'; nBox.style.color = '#991b1b';
+        if (nBtn) nBtn.style.display = 'none';
+    } else if (Notification.permission === 'granted') {
+        nBox.innerHTML = '✅ <b>Notifications enabled.</b> You will be alerted when watched spots become vacant.';
+        nBox.style.background = '#f0fdf4'; nBox.style.color = '#166534';
+        if (nBtn) { nBtn.textContent = '✅ Notifications Enabled'; nBtn.style.background = '#16a34a'; }
+    } else if (Notification.permission === 'denied') {
+        nBox.innerHTML = '❌ <b>Notifications blocked.</b> To fix: tap the 🔒 icon in your browser address bar → allow Notifications, then reload.';
+        nBox.style.background = '#fef2f2'; nBox.style.color = '#991b1b';
+    } else {
+        nBox.innerHTML = '⚪ Not yet enabled. Tap the button below to allow notifications.';
+    }
+}
 
-        // On page load: if a ?meter=ID deep link is present, fly to that meter and open its popup
-        function handleDeepLink() {
-            const params = new URLSearchParams(location.search);
-            const meterId = params.get('meter');
-            const lat     = parseFloat(params.get('lat'));
-            const lng     = parseFloat(params.get('lng'));
-            if (meterId && !isNaN(lat) && !isNaN(lng)) {
-                map.setView([lat, lng], 18);
-                // Wait briefly for markers to render, then open the popup
-                setTimeout(() => {
-                    const marker = cachedMarkersMap[meterId];
-                    if (marker) marker.openPopup();
-                }, 2000);
-            }
-        }
+window.requestLocationPerm = function() {
+    if (!navigator.geolocation) { alert('Geolocation not supported.'); return; }
+    navigator.geolocation.getCurrentPosition(
+        () => updateSettingsStatus(),
+        () => updateSettingsStatus()
+    );
+};
 
-        // Register service worker for PWA support
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').catch(() => {});
-            });
-        }
+window.requestNotifPerm = function() {
+    if (!('Notification' in window)) { alert('Notifications not supported by this browser.'); return; }
+    Notification.requestPermission().then(() => updateSettingsStatus());
+};
 
-        function triggerSystemNotification(spaceId) {
-            const data       = parkingMeters[spaceId];
-            const streetName = data ? data.street : "A watched spot";
-            if (Notification.permission === "granted") {
-                new Notification("🚗 Parking Spot Open!", {
-                    body: `${streetName} is now empty! Tap to navigate via Google Maps.`,
-                    icon: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png"
-                });
-            }
-        }
-    </script>
+// ═══════════════════════════════════════════════
+// INTERACTIVE ACTIONS
+// ═══════════════════════════════════════════════
+window.focusOnStreet = function(enc) {
+    const name = decodeURIComponent(enc);
+    const sel  = getSelectedType();
+    const bounds = L.latLngBounds();
+    let n = 0;
+    Object.values(parkingMeters).forEach(m => {
+        if (m.street !== name) return;
+        if (sel !== 'ALL' && m.type.toUpperCase().trim() !== sel) return;
+        bounds.extend([m.lat, m.lng]); n++;
+    });
+    if (n > 0) { map.fitBounds(bounds, { maxZoom:18, padding:[60,60] }); closePanel(); }
+};
+
+window.toggleWatch = function(id) {
+    if (watchlist.includes(id)) watchlist = watchlist.filter(x=>x!==id);
+    else watchlist.push(id);
+    localStorage.setItem('hk_meter_watchlist', JSON.stringify(watchlist));
+    map.closePopup(); renderMapMarkers(); updateSavedBadge();
+};
+
+window.watchEntireStreet = function(streetName) {
+    const sel = getSelectedType();
+    Object.keys(parkingMeters).forEach(id => {
+        const m = parkingMeters[id];
+        if (m.street !== streetName) return;
+        if (sel !== 'ALL' && m.type.toUpperCase().trim() !== sel) return;
+        if (!watchlist.includes(id)) watchlist.push(id);
+    });
+    localStorage.setItem('hk_meter_watchlist', JSON.stringify(watchlist));
+    renderMapMarkers(); updateSavedBadge();
+    // Show confirmation
+    document.getElementById('refreshStatus').textContent = `✅ "${streetName}" saved!`;
+    setTimeout(()=>{ document.getElementById('refreshStatus').textContent=''; }, 2500);
+};
+
+window.unwatchEntireStreet = function(enc) {
+    const name = decodeURIComponent(enc);
+    const sel  = getSelectedType();
+    watchlist = watchlist.filter(id => {
+        const m = parkingMeters[id];
+        if (!m || m.street !== name) return true;
+        if (sel !== 'ALL' && m.type.toUpperCase().trim() !== sel) return true;
+        return false;
+    });
+    localStorage.setItem('hk_meter_watchlist', JSON.stringify(watchlist));
+    renderMapMarkers(); updateSavedBadge();
+    renderSavedPanel(); // refresh open panel
+};
+
+window.toggleSensorFlag = function(id) {
+    if (brokenSensors[id]) delete brokenSensors[id];
+    else {
+        brokenSensors[id] = true;
+        if (!userComments[id]) userComments[id] = [];
+        userComments[id].unshift(`[⚠️ Flagged at ${new Date().toLocaleTimeString('en-HK',{hour:'2-digit',minute:'2-digit'})}]`);
+        localStorage.setItem('hk_meter_comments', JSON.stringify(userComments));
+    }
+    localStorage.setItem('hk_meter_broken', JSON.stringify(brokenSensors));
+    map.closePopup(); renderMapMarkers();
+};
+
+window.submitComment = function(id) {
+    const el = document.getElementById(`cmt-${id}`);
+    if (!el || !el.value.trim()) return;
+    const ts = new Date().toLocaleTimeString('en-HK',{hour:'2-digit',minute:'2-digit'});
+    if (!userComments[id]) userComments[id] = [];
+    userComments[id].unshift(`(${ts}) ${el.value.trim()}`);
+    if (userComments[id].length > 10) userComments[id] = userComments[id].slice(0,10);
+    localStorage.setItem('hk_meter_comments', JSON.stringify(userComments));
+    map.closePopup(); renderMapMarkers();
+};
+
+window.shareSpot = function(id, url) {
+    const m = parkingMeters[id];
+    if (navigator.share) {
+        navigator.share({ title:'ParkGaai Parking Spot', text:`Check ${m?.street||'this spot'} on ParkGaai!`, url }).catch(()=>{});
+    } else {
+        navigator.clipboard?.writeText(url).then(()=>alert('✅ Link copied!')).catch(()=>prompt('Copy link:',url));
+    }
+};
+
+// ═══════════════════════════════════════════════
+// NOTIFICATIONS
+// ═══════════════════════════════════════════════
+function triggerNotification(spaceId) {
+    const m = parkingMeters[spaceId];
+    if (Notification.permission === 'granted') {
+        new Notification('🚗 Parking Spot Open!', {
+            body: `${m?.street||'A watched spot'} is now vacant!`,
+            icon: '/icons/icon-192.png', tag:`meter-${spaceId}`
+        });
+    }
+}
+
+// ═══════════════════════════════════════════════
+// DEEP LINK
+// ═══════════════════════════════════════════════
+function handleDeepLink() {
+    const p = new URLSearchParams(location.search);
+    const id = p.get('meter'), lat = parseFloat(p.get('lat')), lng = parseFloat(p.get('lng'));
+    if (id && !isNaN(lat) && !isNaN(lng)) {
+        map.setView([lat,lng], 18);
+        setTimeout(()=>{ cachedMarkersMap[id]?.openPopup(); }, 2000);
+    }
+}
+</script>
 </body>
 </html>
