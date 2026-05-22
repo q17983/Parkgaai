@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/spaces",
+      "destination": "https://resource.data.one.gov.hk/td/psiparkingspaces/spaceinfo/parkingspaces.csv"
+    },
+    {
+      "source": "/api/occupancy",
+      "destination": "https://resource.data.one.gov.hk/td/psiparkingspaces/occupancystatus/occupancystatus.csv"
+    }
+  ]
+}
