@@ -40,12 +40,13 @@
             background: white;
             border-radius: 22px 22px 0 0;
             box-shadow: 0 -4px 24px rgba(0,0,0,0.13);
-            max-height: 52vh; overflow-y: auto;
+            max-height: 320px; overflow-y: auto;
             transform: translateY(110%);
             transition: transform 0.34s cubic-bezier(0.32,0.72,0,1);
             z-index: 410;
         }
         #panel.open { transform: translateY(0); }
+        #panel.minimized { transform: translateY(calc(100% - 54px)); }
         #panelContent { padding-bottom: 20px; }
 
         /* ── BOTTOM NAV ─────────────────────────────── */
@@ -178,9 +179,8 @@
     <div id="panelHandle" style="display:flex;justify-content:center;padding:14px 0 8px;position:sticky;top:0;background:white;z-index:1;cursor:grab;touch-action:none">
         <div style="width:48px;height:5px;background:#d1d5db;border-radius:5px"></div>
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 16px 10px;position:sticky;top:26px;background:white;z-index:1;border-bottom:1px solid #f1f5f9">
+    <div style="padding:0 16px 10px;position:sticky;top:36px;background:white;z-index:1;border-bottom:1px solid #f1f5f9">
         <h2 id="panelTitle" style="font-size:16px;font-weight:800;color:#0f172a;margin:0"></h2>
-        <button onclick="closePanel()" style="border:none;background:none;color:#94a3b8;font-size:13px;font-weight:700;cursor:pointer;padding:4px 8px">✕</button>
     </div>
     <div id="panelContent"></div>
 </div>
@@ -204,9 +204,6 @@
 <!-- ══════════ SETTINGS MODAL ══════════ -->
 <div id="settingsModal" onclick="if(event.target===this)closeSettings()">
     <div id="settingsSheet">
-        <div style="display:flex;justify-content:center;padding:12px 0 6px">
-            <div style="width:38px;height:4px;background:#e2e8f0;border-radius:4px"></div>
-        </div>
         <div style="padding:8px 20px 0">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
                 <h2 style="font-size:20px;font-weight:800;color:#0f172a;margin:0">Settings 設定</h2>
@@ -639,39 +636,51 @@ function buildPopup(id, d) {
 // ═══════════════════════════════════════════════
 // PANEL MANAGEMENT
 // ═══════════════════════════════════════════════
+function closePanel() {
+    const panel = document.getElementById('panel');
+    panel.style.transform = '';
+    panel.classList.remove('open', 'minimized');
+    currentPanel = null;
+    ['navNearMe','navSaved','navReport'].forEach(id => document.getElementById(id)?.classList.remove('active'));
+}
+
 function openPanel(title, renderFn) {
     document.getElementById('panelTitle').textContent = title;
     document.getElementById('panelContent').innerHTML = '';
     renderFn();
-    document.getElementById('panel').classList.add('open');
-}
-
-function closePanel() {
     const panel = document.getElementById('panel');
-    panel.style.transform = '';
-    panel.classList.remove('open');
-    currentPanel = null;
-    ['navNearMe','navSaved','navReport'].forEach(id => document.getElementById(id)?.classList.remove('active'));
+    panel.classList.remove('minimized');
+    panel.classList.add('open');
 }
 
 function initPanelDrag() {
     const panel  = document.getElementById('panel');
     const handle = document.getElementById('panelHandle');
     if (!handle || !panel) return;
-    let startY = 0, dragY = 0, dragging = false;
+    let startY = 0, dragging = false;
     handle.addEventListener('touchstart', e => {
-        startY = e.touches[0].clientY; dragY = 0; dragging = true;
+        startY = e.touches[0].clientY; dragging = true;
         panel.style.transition = 'none';
     }, { passive: true });
     handle.addEventListener('touchmove', e => {
         if (!dragging) return;
-        dragY = Math.max(0, e.touches[0].clientY - startY);
-        panel.style.transform = `translateY(${dragY}px)`;
+        const dy = Math.max(0, e.touches[0].clientY - startY);
+        const base = panel.classList.contains('minimized') ? panel.offsetHeight - 54 : 0;
+        panel.style.transform = `translateY(${base + dy}px)`;
     }, { passive: true });
-    handle.addEventListener('touchend', () => {
+    handle.addEventListener('touchend', e => {
+        if (!dragging) return;
         dragging = false;
+        const dy = Math.max(0, e.changedTouches[0].clientY - startY);
         panel.style.transition = 'transform 0.34s cubic-bezier(0.32,0.72,0,1)';
-        if (dragY > 90) { closePanel(); } else { panel.style.transform = 'translateY(0)'; }
+        panel.style.transform = '';
+        if (panel.classList.contains('minimized')) {
+            if (dy > 50) { closePanel(); }
+            else { panel.classList.add('minimized'); }
+        } else {
+            if (dy > 80) { panel.classList.remove('open'); panel.classList.add('minimized'); }
+            else { panel.classList.add('open'); }
+        }
     });
 }
 
@@ -826,17 +835,15 @@ function renderSavedPanel() {
         const dur = fmtMaxTime(g.maxTimes);
         const typeBadges = [...g.types].map(t=>`<span style="background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700">${getVehicleShortName(t)}</span>`).join('');
         return `
-        <div onclick="focusOnStreet('${encodeURIComponent(g.street)}')" style="padding:14px 16px;border-bottom:1px solid #f8fafc;cursor:pointer">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-                <div style="flex:1;min-width:0">
-                    <p style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${g.street}</p>
-                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:3px">
-                        <span style="font-size:12px;font-weight:700;color:${hasV?'#16a34a':'#dc2626'}">${hasV?`● ${g.vacant} vacant`:'● Full'}</span>
-                        <span style="color:#e2e8f0">·</span>
-                        <span style="font-size:12px;color:#94a3b8">${g.total} spots · ${dur}</span>
-                    </div>
-                    <div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">${typeBadges}</div>
-                </div>
+        <div onclick="focusOnStreet('${encodeURIComponent(g.street)}')" style="padding:12px 16px;border-bottom:1px solid #f8fafc;cursor:pointer">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+                <p style="font-size:14px;font-weight:700;color:#0f172a;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${g.street}</p>
+                ${typeBadges}
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+                <span style="font-size:12px;font-weight:700;color:${hasV?'#16a34a':'#dc2626'}">${hasV?`● ${g.vacant} vacant`:'● Full'}</span>
+                <span style="color:#e2e8f0">·</span>
+                <span style="font-size:12px;color:#94a3b8">${g.total} spots · ${dur}</span>
             </div>
             <div style="display:flex;gap:8px;margin-top:10px">
                 <a href="${mapsUrl}" target="_blank" onclick="event.stopPropagation()"
