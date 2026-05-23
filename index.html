@@ -35,16 +35,18 @@
 
         /* ── BOTTOM SHEET PANEL ─────────────────────── */
         #panel {
-            position: fixed; left: 0; right: 0; bottom: 68px;
+            position: fixed; left: 0; right: 0;
+            bottom: calc(68px + env(safe-area-inset-bottom));
             background: white;
             border-radius: 22px 22px 0 0;
             box-shadow: 0 -4px 24px rgba(0,0,0,0.13);
-            max-height: 68vh; overflow-y: auto;
+            max-height: 52vh; overflow-y: auto;
             transform: translateY(110%);
             transition: transform 0.34s cubic-bezier(0.32,0.72,0,1);
             z-index: 410;
         }
         #panel.open { transform: translateY(0); }
+        #panelContent { padding-bottom: 20px; }
 
         /* ── BOTTOM NAV ─────────────────────────────── */
         #bottomNav {
@@ -70,7 +72,8 @@
 
         /* ── ZOOM + LOCATE FABs ─────────────────────── */
         #mapFabs {
-            position: fixed; right: 12px; bottom: 86px;
+            position: fixed; right: 12px;
+            bottom: calc(86px + env(safe-area-inset-bottom));
             z-index: 405; display: flex; flex-direction: column; gap: 8px;
         }
         .fab {
@@ -163,6 +166,7 @@
 
 <!-- ══════════ ZOOM + LOCATE FABs ══════════ -->
 <div id="mapFabs">
+    <button class="fab" id="alertFab" onclick="toggleAlertMute()" title="Toggle vacancy alerts" style="font-size:20px">🔔</button>
     <button class="fab" id="filterFab" onclick="toggleFilterStrip()" title="Filter by vehicle type" style="font-size:11px;font-weight:900;color:#2563eb;letter-spacing:-0.5px">ALL</button>
     <button class="fab" onclick="map.zoomIn()">+</button>
     <button class="fab" onclick="map.zoomOut()">−</button>
@@ -257,20 +261,29 @@
 
             <div style="border-top:1px solid #f1f5f9;margin:16px 0"></div>
 
-            <!-- VEHICLE FILTER -->
+            <!-- INSTALL APP -->
             <div style="margin-bottom:20px">
-                <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px">
-                    <span style="font-size:26px">🚗</span>
+                <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px">
+                    <span style="font-size:26px">📲</span>
                     <div>
-                        <p style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 3px">Vehicle Type 車輛類別</p>
-                        <p style="font-size:12px;color:#64748b;margin:0">Show only meters for your vehicle.</p>
+                        <p style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 3px">Add to Home Screen 加至主畫面</p>
+                        <p style="font-size:12px;color:#64748b;margin:0">Install ParkGaai for full-screen use and push notifications.</p>
                     </div>
                 </div>
-                <select id="vehicleTypeFilter" onchange="filterVehicleType()"
-                    style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:12px;font-size:14px;color:#0f172a;background:#f8fafc;-webkit-appearance:auto">
-                    <option value="ALL">All Categories (全部車輛)</option>
-                </select>
+                <div style="background:#f0f9ff;border-radius:12px;padding:12px;margin-bottom:8px">
+                    <p style="font-size:12px;font-weight:700;color:#0369a1;margin:0 0 4px">🍎 iPhone / iPad (Safari)</p>
+                    <p style="font-size:12px;color:#0369a1;margin:0">Tap <b>Share ⎙</b> at the bottom → <b>"Add to Home Screen"</b> → tap <b>Add</b></p>
+                </div>
+                <div style="background:#f0fdf4;border-radius:12px;padding:12px">
+                    <p style="font-size:12px;font-weight:700;color:#166534;margin:0 0 4px">🤖 Android (Chrome)</p>
+                    <p style="font-size:12px;color:#166534;margin:0">Tap <b>⋮ Menu</b> (top right) → <b>"Add to Home Screen"</b> or <b>"Install App"</b></p>
+                </div>
             </div>
+
+            <!-- hidden dropdown kept for JS compatibility -->
+            <select id="vehicleTypeFilter" onchange="filterVehicleType()" style="display:none">
+                <option value="ALL">All Categories</option>
+            </select>
 
             <div style="border-top:1px solid #f1f5f9;margin:16px 0"></div>
 
@@ -310,9 +323,10 @@ let occupancyState = {};
 let cachedMarkersMap = {};
 let currentPanel   = null; // 'search' | 'saved' | 'report'
 
-let watchlist     = JSON.parse(localStorage.getItem('hk_meter_watchlist') || '[]');
-let userComments  = JSON.parse(localStorage.getItem('hk_meter_comments')  || '{}');
-let brokenSensors = JSON.parse(localStorage.getItem('hk_meter_broken')    || '{}');
+let watchlist         = JSON.parse(localStorage.getItem('hk_meter_watchlist')   || '[]');
+let userComments      = JSON.parse(localStorage.getItem('hk_meter_comments')    || '{}');
+let brokenSensors     = JSON.parse(localStorage.getItem('hk_meter_broken')      || '{}');
+let notificationsMuted = JSON.parse(localStorage.getItem('parkgaai_notif_muted') || 'false');
 
 // ═══════════════════════════════════════════════
 // LOOKUP TABLES
@@ -358,6 +372,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     hideLoading();
     handleDeepLink();
     updateSettingsStatus();
+    updateAlertFab();
     setInterval(fetchRealtimeOccupancy, 60000);
 });
 
@@ -461,7 +476,7 @@ async function fetchRealtimeOccupancy() {
                     const id = row.ParkingSpaceId; if (!id) return;
                     const cur = row.OccupancyStatus;
                     occupancyState[id] = cur;
-                    if (watchlist.includes(id) && prev[id]==='O' && cur==='V' && !brokenSensors[id])
+                    if (watchlist.includes(id) && prev[id]==='O' && cur==='V' && !brokenSensors[id] && !notificationsMuted)
                         triggerNotification(id);
                 });
                 renderMapMarkers();
@@ -493,7 +508,7 @@ function renderMapMarkers() {
         const isVacant = occupancyState[id] === 'V';
         const fillColor = brokenSensors[id] ? '#f59e0b' : (isVacant ? '#16a34a' : '#dc2626');
         const marker = L.circleMarker([d.lat, d.lng], {
-            radius: 7, fillColor, color: 'white', weight: 2, fillOpacity: 0.92,
+            radius: 10, fillColor, color: 'white', weight: 3, fillOpacity: 1,
             isVacant, meterId: id
         }).bindPopup(() => buildPopup(id, d), { maxWidth: 300 });
         toAdd.push(marker);
@@ -516,6 +531,22 @@ window.filterVehicleType = function() {
     updateSavedBadge();
     if (currentPanel === 'saved') renderSavedPanel();
 };
+
+function updateAlertFab() {
+    const fab = document.getElementById('alertFab');
+    if (!fab) return;
+    fab.textContent = notificationsMuted ? '🔕' : '🔔';
+    fab.style.color  = notificationsMuted ? '#94a3b8' : '#10b981';
+    fab.title = notificationsMuted ? 'Alerts OFF — tap to enable' : 'Alerts ON — tap to mute';
+}
+
+function toggleAlertMute() {
+    notificationsMuted = !notificationsMuted;
+    localStorage.setItem('parkgaai_notif_muted', JSON.stringify(notificationsMuted));
+    updateAlertFab();
+    document.getElementById('refreshStatus').textContent = notificationsMuted ? '🔕 Alerts muted' : '🔔 Alerts on';
+    setTimeout(() => { document.getElementById('refreshStatus').textContent = ''; }, 2000);
+}
 
 function toggleFilterStrip() {
     const strip = document.getElementById('filterStrip');
