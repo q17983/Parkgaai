@@ -1,5 +1,5 @@
 // ParkGaai Service Worker
-const CACHE = 'parkgaai-v1';
+const CACHE = 'parkgaai-v2';
 const PRECACHE = ['/', '/index.html', '/manifest.json'];
 
 // Install: cache the app shell
