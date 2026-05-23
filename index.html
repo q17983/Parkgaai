@@ -2,7 +2,7 @@
 <html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
     <title>ParkGaai — Hong Kong Smart Parking</title>
     <meta name="description" content="Real-time HK smart parking meter finder. Find vacant spots near you instantly.">
     <meta name="theme-color" content="#ffffff">
@@ -143,7 +143,7 @@
             <span style="font-size:20px;flex-shrink:0">🅿️</span>
             <input id="searchInput" type="text" placeholder="Search street or landmark…"
                 onkeypress="if(event.key==='Enter')searchLocation()"
-                style="flex:1;border:none;outline:none;font-size:14px;color:#1e293b;background:transparent;min-width:0">
+                style="flex:1;border:none;outline:none;font-size:16px;color:#1e293b;background:transparent;min-width:0">
             <button onclick="searchLocation()"
                 style="background:#2563eb;color:white;border:none;border-radius:10px;padding:6px 14px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">
                 Go
@@ -175,8 +175,8 @@
 
 <!-- ══════════ BOTTOM SHEET PANEL ══════════ -->
 <div id="panel">
-    <div style="display:flex;justify-content:center;padding:10px 0 6px;position:sticky;top:0;background:white;z-index:1">
-        <div style="width:38px;height:4px;background:#e2e8f0;border-radius:4px"></div>
+    <div id="panelHandle" style="display:flex;justify-content:center;padding:14px 0 8px;position:sticky;top:0;background:white;z-index:1;cursor:grab;touch-action:none">
+        <div style="width:48px;height:5px;background:#d1d5db;border-radius:5px"></div>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 16px 10px;position:sticky;top:26px;background:white;z-index:1;border-bottom:1px solid #f1f5f9">
         <h2 id="panelTitle" style="font-size:16px;font-weight:800;color:#0f172a;margin:0"></h2>
@@ -250,12 +250,6 @@
                         style="background:#f1f5f9;color:#475569;border:none;border-radius:12px;padding:13px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">
                         Test 🔔
                     </button>
-                </div>
-                <!-- iOS hint -->
-                <div id="iosHint" style="display:none;margin-top:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px;font-size:12px;color:#92400e">
-                    <p style="font-weight:700;margin:0 0 4px">📱 iPhone / iPad users:</p>
-                    <p style="margin:0">Notifications only work when ParkGaai is <b>added to your Home Screen</b>.<br>
-                    In Safari: tap <b>Share ⎙</b> → <b>"Add to Home Screen"</b> → reopen from the icon.</p>
                 </div>
             </div>
 
@@ -373,6 +367,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     handleDeepLink();
     updateSettingsStatus();
     updateAlertFab();
+    initPanelDrag();
     setInterval(fetchRealtimeOccupancy, 60000);
 });
 
@@ -391,7 +386,7 @@ function initMap() {
     L.Popup.prototype.options.autoPanPaddingBottomRight = L.point(10, 80);
     tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OpenStreetMap contributors' }).addTo(map);
     markerClusterGroup = L.markerClusterGroup({
-        chunkedLoading: true, maxClusterRadius: 45,
+        chunkedLoading: true, maxClusterRadius: 35, disableClusteringAtZoom: 17,
         iconCreateFunction(cluster) {
             const ms    = cluster.getAllChildMarkers();
             const total  = ms.length;
@@ -507,8 +502,9 @@ function renderMapMarkers() {
         if (sel !== 'ALL' && d.type.toUpperCase().trim() !== sel) return;
         const isVacant = occupancyState[id] === 'V';
         const fillColor = brokenSensors[id] ? '#f59e0b' : (isVacant ? '#16a34a' : '#dc2626');
-        const marker = L.circleMarker([d.lat, d.lng], {
-            radius: 10, fillColor, color: 'white', weight: 3, fillOpacity: 1,
+        const dotHtml = `<div style="width:16px;height:16px;border-radius:50%;background:${fillColor};border:3px solid white;box-shadow:0 1px 6px rgba(0,0,0,0.35)"></div>`;
+        const marker = L.marker([d.lat, d.lng], {
+            icon: L.divIcon({ html: dotHtml, className: '', iconSize: [16,16], iconAnchor: [8,8] }),
             isVacant, meterId: id
         }).bindPopup(() => buildPopup(id, d), { maxWidth: 300 });
         toAdd.push(marker);
@@ -651,10 +647,32 @@ function openPanel(title, renderFn) {
 }
 
 function closePanel() {
-    document.getElementById('panel').classList.remove('open');
+    const panel = document.getElementById('panel');
+    panel.style.transform = '';
+    panel.classList.remove('open');
     currentPanel = null;
-    // Reset active nav
     ['navNearMe','navSaved','navReport'].forEach(id => document.getElementById(id)?.classList.remove('active'));
+}
+
+function initPanelDrag() {
+    const panel  = document.getElementById('panel');
+    const handle = document.getElementById('panelHandle');
+    if (!handle || !panel) return;
+    let startY = 0, dragY = 0, dragging = false;
+    handle.addEventListener('touchstart', e => {
+        startY = e.touches[0].clientY; dragY = 0; dragging = true;
+        panel.style.transition = 'none';
+    }, { passive: true });
+    handle.addEventListener('touchmove', e => {
+        if (!dragging) return;
+        dragY = Math.max(0, e.touches[0].clientY - startY);
+        panel.style.transform = `translateY(${dragY}px)`;
+    }, { passive: true });
+    handle.addEventListener('touchend', () => {
+        dragging = false;
+        panel.style.transition = 'transform 0.34s cubic-bezier(0.32,0.72,0,1)';
+        if (dragY > 90) { closePanel(); } else { panel.style.transform = 'translateY(0)'; }
+    });
 }
 
 // ═══════════════════════════════════════════════
@@ -745,7 +763,11 @@ window.triggerNearMe = function() {
             const { latitude:lat, longitude:lng } = pos.coords;
             map.setView([lat,lng], 16);
             if (searchMarker) map.removeLayer(searchMarker);
-            searchMarker = L.marker([lat,lng],{icon:ICONS.gold}).addTo(map).bindPopup('<b>📍 Your Location</b>').openPopup();
+            const myLocIcon = L.divIcon({
+                html: `<div style="position:relative;width:22px;height:22px;display:flex;align-items:center;justify-content:center"><div style="position:absolute;width:22px;height:22px;border-radius:50%;background:rgba(37,99,235,0.18)"></div><div style="position:absolute;width:14px;height:14px;border-radius:50%;background:#2563eb;border:3px solid white;box-shadow:0 2px 8px rgba(37,99,235,0.55)"></div></div>`,
+                className: '', iconSize: [22,22], iconAnchor: [11,11]
+            });
+            searchMarker = L.marker([lat,lng], {icon: myLocIcon}).addTo(map);
             calculateNearestMeters(lat, lng);
         },
         () => { openSettings(); },  // If denied, open settings to guide user
@@ -892,14 +914,12 @@ function updateSettingsStatus() {
     // Notification status
     const nBox = document.getElementById('notifStatusBox');
     const nBtn = document.getElementById('notifBtn');
-    const iosHint = document.getElementById('iosHint');
     if (!nBox) return;
     const isIOS = /iphone|ipad/i.test(navigator.userAgent);
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
     if (isIOS && !isStandalone) {
-        nBox.innerHTML = '📱 <b>iPhone detected.</b> Notifications require installing ParkGaai to your Home Screen first.';
+        nBox.innerHTML = '📱 <b>iPhone detected.</b> Add ParkGaai to your Home Screen first, then reopen to enable notifications.';
         nBox.style.background = '#fffbeb'; nBox.style.color = '#92400e';
-        if (iosHint) iosHint.style.display = 'block';
     } else if (!('Notification' in window)) {
         nBox.innerHTML = '❌ Your browser does not support notifications.';
         nBox.style.background = '#fef2f2'; nBox.style.color = '#991b1b';
